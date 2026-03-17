@@ -49,6 +49,7 @@ import { HeadlessManager } from '../headless/manager';
 import { BehaviorObserver } from '../behavior/observer';
 import { WorkflowEngine } from '../workflow/engine';
 import { WorkspaceManager } from '../workspaces/manager';
+import { HeuristicPlanner } from '../agents/planner';
 import { DEFAULT_PARTITION } from '../utils/constants';
 import type { RuntimeManagers } from './types';
 
@@ -172,8 +173,12 @@ export async function initializeRuntimeManagers(opts: InitializeRuntimeOptions):
   runtime.pinboardManager = new PinboardManager();
   runtime.contentExtractor = new ContentExtractor();
   runtime.workflowEngine = new WorkflowEngine();
+  runtime.heuristicPlanner = new HeuristicPlanner();
   runtime.loginManager = new LoginManager();
   runtime.sessionRestoreManager = new SessionRestoreManager(runtime.syncManager);
+
+  runtime.workflowEngine.setLocatorFinder(runtime.locatorFinder);
+  runtime.workflowEngine.setSnapshotManager(runtime.snapshotManager);
 
   runtime.workspaceManager.setMainWindow(win);
   const deviceSyncConfig = runtime.configManager.getConfig().deviceSync;
@@ -314,6 +319,7 @@ export function createManagerRegistry(runtime: RuntimeManagers): ManagerRegistry
     syncManager: runtime.syncManager,
     pinboardManager: runtime.pinboardManager,
     googlePhotosManager: runtime.googlePhotosManager,
+    heuristicPlanner: runtime.heuristicPlanner,
   };
 }
 

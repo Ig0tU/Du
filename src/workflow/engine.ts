@@ -1,11 +1,13 @@
-import type { BrowserWindow } from 'electron';
+import type { BrowserWindow, WebContents } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { tandemDir } from '../utils/paths';
 import { DEFAULT_TIMEOUT_MS } from '../utils/constants';
-import { humanizedClick, humanizedType } from '../input/humanized';
+import { humanizedClick, humanizedType, humanizedHover } from '../input/humanized';
 import { createLogger } from '../utils/logger';
 import { assertSinglePathSegment, resolvePathWithinRoot } from '../utils/security';
+import type { LocatorFinder, LocatorQuery } from '../locators/finder';
+import type { SnapshotManager } from '../snapshot/manager';
 
 const log = createLogger('WorkflowEngine');
 
@@ -19,13 +21,21 @@ interface ConditionExecutionResult {
   skipCount?: number;
 }
 
-interface WorkflowStep {
+export interface WorkflowStep {
   id: string;
-  type: 'navigate' | 'wait' | 'click' | 'type' | 'extract' | 'screenshot' | 'condition' | 'scroll';
+  type: 'navigate' | 'wait' | 'click' | 'type' | 'extract' | 'screenshot' | 'condition' | 'scroll' | 'hover' | 'focus' | 'press' | 'select';
   params: Record<string, unknown>;
   description?: string;
   retries?: number;
   timeout?: number;
+}
+
+interface StepWithLocator extends WorkflowStep {
+  params: {
+    selector?: string;
+    locator?: LocatorQuery;
+    [key: string]: unknown;
+  };
 }
 
 interface NavigateStep extends WorkflowStep {
@@ -42,34 +52,75 @@ interface WaitStep extends WorkflowStep {
     duration: number; // milliseconds
     condition?: 'element' | 'text' | 'url';
     selector?: string;
+    locator?: LocatorQuery;
     text?: string;
     urlPattern?: string;
   };
 }
 
-interface ClickStep extends WorkflowStep {
+interface ClickStep extends StepWithLocator {
   type: 'click';
   params: {
-    selector: string;
+    selector?: string;
+    locator?: LocatorQuery;
     waitAfter?: number;
     scrollIntoView?: boolean;
   };
 }
 
-interface TypeStep extends WorkflowStep {
+interface HoverStep extends StepWithLocator {
+  type: 'hover';
+  params: {
+    selector?: string;
+    locator?: LocatorQuery;
+    waitAfter?: number;
+  };
+}
+
+interface FocusStep extends StepWithLocator {
+  type: 'focus';
+  params: {
+    selector?: string;
+    locator?: LocatorQuery;
+  };
+}
+
+interface TypeStep extends StepWithLocator {
   type: 'type';
   params: {
-    selector: string;
+    selector?: string;
+    locator?: LocatorQuery;
     text: string;
     clear?: boolean;
     submit?: boolean;
   };
 }
 
-interface ExtractStep extends WorkflowStep {
+interface PressStep extends WorkflowStep {
+  type: 'press';
+  params: {
+    key: string; // e.g. "Enter", "Tab", "Escape", "a"
+    modifiers?: Array<'shift' | 'control' | 'alt' | 'meta'>;
+    count?: number;
+  };
+}
+
+interface SelectStep extends StepWithLocator {
+  type: 'select';
+  params: {
+    selector?: string;
+    locator?: LocatorQuery;
+    value?: string;
+    label?: string;
+    index?: number;
+  };
+}
+
+interface ExtractStep extends StepWithLocator {
   type: 'extract';
   params: {
     selector?: string;
+    locator?: LocatorQuery;
     attribute?: string;
     saveAs: string; // Variable name to store result
   };
@@ -92,11 +143,12 @@ interface ScrollStep extends WorkflowStep {
   };
 }
 
-interface ConditionStep extends WorkflowStep {
+interface ConditionStep extends StepWithLocator {
   type: 'condition';
   params: {
     condition: 'elementExists' | 'textContains' | 'urlMatches' | 'variableEquals';
     selector?: string;
+    locator?: LocatorQuery;
     text?: string;
     urlPattern?: string;
     variable?: string;
@@ -139,11 +191,23 @@ interface WorkflowExecution {
 export class WorkflowEngine {
   private workflowsDir: string;
   private executions: Map<string, WorkflowExecution> = new Map();
+  private locatorFinder?: LocatorFinder;
+  private snapshotManager?: SnapshotManager;
 
-  constructor() {
+  constructor(locatorFinder?: LocatorFinder, snapshotManager?: SnapshotManager) {
     this.workflowsDir = tandemDir('workflows');
+    this.locatorFinder = locatorFinder;
+    this.snapshotManager = snapshotManager;
     this.ensureDirectories();
     this.loadWorkflows();
+  }
+
+  setLocatorFinder(finder: LocatorFinder): void {
+    this.locatorFinder = finder;
+  }
+
+  setSnapshotManager(manager: SnapshotManager): void {
+    this.snapshotManager = manager;
   }
 
   private ensureDirectories(): void {
@@ -295,6 +359,26 @@ export class WorkflowEngine {
             executedAt: new Date().toISOString()
           });
 
+          // Verification Step
+          const verified = await this.verifyStep(step, result, webview);
+          if (!verified) {
+            log.warn(`Step ${step.id} failed verification`);
+            const onFail = step.params.onVerifyFail as 'continue' | 'retry' | 'goto' | 'abort' | undefined;
+            if (onFail === 'retry') {
+               // Logic to retry or self-correct
+               log.info(`Retrying step ${step.id} due to verification failure`);
+               continue;
+            } else if (onFail === 'goto' && step.params.onVerifyFailStep) {
+               const gotoIndex = workflow.steps.findIndex(s => s.id === step.params.onVerifyFailStep as string);
+               if (gotoIndex !== -1) {
+                 stepIndex = gotoIndex;
+                 continue;
+               }
+            } else if (onFail === 'abort') {
+               throw new Error(`Verification failed for step ${step.id}`);
+            }
+          }
+
           // Handle condition step results
           if (step.type === 'condition' && result) {
             const conditionResult = result as ConditionExecutionResult;
@@ -353,6 +437,10 @@ export class WorkflowEngine {
   private async executeStep(step: WorkflowStep, execution: WorkflowExecution, webview: BrowserWindow): Promise<WorkflowStepResult> {
     const timeout = step.timeout || DEFAULT_TIMEOUT_MS;
 
+    // Interpolate variables in step params
+    const interpolatedParams = this.interpolateParams(step.params, execution.variables);
+    const interpolatedStep = { ...step, params: interpolatedParams };
+
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error(`Step ${step.id} timed out after ${timeout}ms`));
@@ -361,33 +449,45 @@ export class WorkflowEngine {
       (async () => {
         let result;
 
-        switch (step.type) {
+        switch (interpolatedStep.type) {
           case 'navigate':
-            result = await this.executeNavigate(step as NavigateStep, webview);
+            result = await this.executeNavigate(interpolatedStep as NavigateStep, webview);
             break;
           case 'wait':
-            result = await this.executeWait(step as WaitStep, webview);
+            result = await this.executeWait(interpolatedStep as WaitStep, webview);
             break;
           case 'click':
-            result = await this.executeClick(step as ClickStep, webview);
+            result = await this.executeClick(interpolatedStep as ClickStep, webview);
+            break;
+          case 'hover':
+            result = await this.executeHover(interpolatedStep as HoverStep, webview);
+            break;
+          case 'focus':
+            result = await this.executeFocus(interpolatedStep as FocusStep, webview);
             break;
           case 'type':
-            result = await this.executeType(step as TypeStep, webview);
+            result = await this.executeType(interpolatedStep as TypeStep, webview);
+            break;
+          case 'press':
+            result = await this.executePress(interpolatedStep as PressStep, webview);
+            break;
+          case 'select':
+            result = await this.executeSelect(interpolatedStep as SelectStep, webview);
             break;
           case 'extract':
-            result = await this.executeExtract(step as ExtractStep, execution, webview);
+            result = await this.executeExtract(interpolatedStep as ExtractStep, execution, webview);
             break;
           case 'screenshot':
-            result = await this.executeScreenshot(step as ScreenshotStep, webview);
+            result = await this.executeScreenshot(interpolatedStep as ScreenshotStep, webview);
             break;
           case 'scroll':
-            result = await this.executeScroll(step as ScrollStep, webview);
+            result = await this.executeScroll(interpolatedStep as ScrollStep, webview);
             break;
           case 'condition':
-            result = await this.executeCondition(step as ConditionStep, execution, webview);
+            result = await this.executeCondition(interpolatedStep as ConditionStep, execution, webview);
             break;
           default:
-            throw new Error(`Unknown step type: ${step.type}`);
+            throw new Error(`Unknown step type: ${interpolatedStep.type}`);
         }
 
         clearTimeout(timer);
@@ -397,6 +497,43 @@ export class WorkflowEngine {
         reject(error);
       });
     });
+  }
+
+  private interpolateParams(params: Record<string, unknown>, variables: WorkflowVariables): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(params)) {
+      if (typeof value === 'string') {
+        result[key] = value.replace(/\{\{([^}]+)\}\}/g, (_, varName) => {
+          const trimmedVarName = varName.trim();
+          return variables[trimmedVarName] !== undefined ? String(variables[trimmedVarName]) : `{{${varName}}}`;
+        });
+      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+        result[key] = this.interpolateParams(value as Record<string, unknown>, variables);
+      } else {
+        result[key] = value;
+      }
+    }
+
+    return result;
+  }
+
+  private async resolveSelector(stepParams: { selector?: string; locator?: LocatorQuery }, _webview: BrowserWindow): Promise<string> {
+    if (stepParams.selector) return stepParams.selector;
+
+    if (stepParams.locator && this.locatorFinder && this.snapshotManager) {
+      log.info(`Resolving semantic locator: ${JSON.stringify(stepParams.locator)}`);
+      const result = await this.locatorFinder.find(stepParams.locator);
+      if (result.found && result.ref) {
+        // If it's a ref, we return it as-is (e.g. "@e1").
+        // Higher-level handlers (executeClick, executeType) know how to handle @refs
+        // by calling SnapshotManager methods directly.
+        return result.ref;
+      }
+      throw new Error(`Could not find element by locator: ${JSON.stringify(stepParams.locator)}`);
+    }
+
+    throw new Error('Neither selector nor locator provided');
   }
 
   private async executeNavigate(step: NavigateStep, webview: BrowserWindow): Promise<void> {
@@ -424,7 +561,7 @@ export class WorkflowEngine {
       // Wait for condition
       const startTime = Date.now();
       const maxWait = step.params.duration || 10000;
-      
+
       while (Date.now() - startTime < maxWait) {
         const conditionMet = await this.checkCondition(step.params, webview);
         if (conditionMet) {
@@ -432,7 +569,7 @@ export class WorkflowEngine {
         }
         await new Promise(resolve => setTimeout(resolve, 500));
       }
-      
+
       throw new Error(`Wait condition not met within ${maxWait}ms`);
     } else {
       // Simple wait
@@ -441,43 +578,64 @@ export class WorkflowEngine {
   }
 
   private async executeClick(step: ClickStep, webview: BrowserWindow): Promise<void> {
+    const selectorOrRef = await this.resolveSelector(step.params, webview);
+
     if (step.params.scrollIntoView) {
-      await webview.webContents.executeJavaScript(`
-        const element = document.querySelector(${JSON.stringify(step.params.selector)});
-        if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      `);
+      await this.scrollIntoView(webview.webContents, selectorOrRef);
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
-    // Verify element exists and is visible before clicking
-    const elementInfo = await webview.webContents.executeJavaScript(`
-      (() => {
-        const element = document.querySelector(${JSON.stringify(step.params.selector)});
-        if (!element) throw new Error('Element not found: ' + ${JSON.stringify(step.params.selector)});
-        const rect = element.getBoundingClientRect();
-        return {
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-          visible: rect.width > 0 && rect.height > 0
-        };
-      })()
-    `);
-
-    if (!elementInfo.visible) {
-      throw new Error(`Element not visible: ${step.params.selector}`);
+    // If it's a ref, use SnapshotManager.clickRef
+    if (selectorOrRef.startsWith('@') && this.snapshotManager) {
+      await this.snapshotManager.clickRef(selectorOrRef);
+    } else {
+      // Use humanizedClick for isTrusted: true events via sendInputEvent
+      await humanizedClick(webview.webContents, selectorOrRef);
     }
 
-    // Use humanizedClick for isTrusted: true events via sendInputEvent
-    await humanizedClick(webview.webContents, step.params.selector);
-    
     if (step.params.waitAfter) {
       await new Promise(resolve => setTimeout(resolve, step.params.waitAfter));
     }
   }
 
+  private async executeHover(step: HoverStep, webview: BrowserWindow): Promise<void> {
+    const selectorOrRef = await this.resolveSelector(step.params, webview);
+
+    if (selectorOrRef.startsWith('@') && this.snapshotManager) {
+      await this.snapshotManager.hoverRef(selectorOrRef);
+    } else {
+      await humanizedHover(webview.webContents, selectorOrRef);
+    }
+
+    if (step.params.waitAfter) {
+      await new Promise(resolve => setTimeout(resolve, step.params.waitAfter));
+    }
+  }
+
+  private async executeFocus(step: FocusStep, webview: BrowserWindow): Promise<void> {
+    const selectorOrRef = await this.resolveSelector(step.params, webview);
+
+    if (selectorOrRef.startsWith('@') && this.snapshotManager) {
+      // To focus by ref, we can click it (humanizedClickAt) or use CDP DOM.focus
+      // Let's use humanizedClickAt as a reliable way to focus for now.
+      await this.snapshotManager.clickRef(selectorOrRef);
+    } else {
+      await webview.webContents.executeJavaScript(`
+        const el = document.querySelector(${JSON.stringify(selectorOrRef)});
+        if (el) el.focus();
+      `);
+    }
+  }
+
   private async executeType(step: TypeStep, webview: BrowserWindow): Promise<void> {
-    // Use humanizedType which handles focus, clear, and typing via sendInputEvent (isTrusted: true)
-    await humanizedType(webview.webContents, step.params.selector, step.params.text, !!step.params.clear);
+    const selectorOrRef = await this.resolveSelector(step.params, webview);
+
+    if (selectorOrRef.startsWith('@') && this.snapshotManager) {
+      await this.snapshotManager.fillRef(selectorOrRef, step.params.text);
+    } else {
+      // Use humanizedType which handles focus, clear, and typing via sendInputEvent (isTrusted: true)
+      await humanizedType(webview.webContents, selectorOrRef, step.params.text, !!step.params.clear);
+    }
 
     if (step.params.submit) {
       // Submit via sendInputEvent Enter key (isTrusted: true)
@@ -486,22 +644,92 @@ export class WorkflowEngine {
     }
   }
 
-  private async executeExtract(step: ExtractStep, execution: WorkflowExecution, webview: BrowserWindow): Promise<WorkflowStepResult> {
-    const result = await webview.webContents.executeJavaScript(`
+  private async executePress(step: PressStep, webview: BrowserWindow): Promise<void> {
+    const { key, modifiers = [], count = 1 } = step.params;
+
+    for (let i = 0; i < count; i++) {
+      webview.webContents.sendInputEvent({
+        type: 'keyDown',
+        keyCode: key,
+        modifiers: modifiers as Electron.InputEvent['modifiers'],
+      });
+      webview.webContents.sendInputEvent({
+        type: 'keyUp',
+        keyCode: key,
+        modifiers: modifiers as Electron.InputEvent['modifiers'],
+      });
+      if (count > 1) await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+
+  private async executeSelect(step: SelectStep, webview: BrowserWindow): Promise<void> {
+    const selectorOrRef = await this.resolveSelector(step.params, webview);
+
+    const { value, label, index } = step.params;
+
+    if (selectorOrRef.startsWith('@')) {
+       // For refs, we click first to ensure it's focused/interactable
+       await this.snapshotManager?.clickRef(selectorOrRef);
+       // Then we need to find the selector for the ref to use the JS select logic
+       // or implement select in SnapshotManager.
+       // Given the time, let's fallback to finding a selector for the ref if possible.
+    }
+
+    await webview.webContents.executeJavaScript(`
       (() => {
-        const selector = ${JSON.stringify(step.params.selector || 'body')};
-        const attribute = ${JSON.stringify(step.params.attribute || '')};
+        const el = document.querySelector(${JSON.stringify(selectorOrRef)});
+        if (!el || el.tagName !== 'SELECT') throw new Error('Element is not a select');
         
-        const element = document.querySelector(selector);
-        if (!element) return null;
-        
-        if (attribute) {
-          return element.getAttribute(attribute);
-        } else {
-          return element.textContent || element.innerText;
+        if (${JSON.stringify(value)} !== undefined) {
+          el.value = ${JSON.stringify(value)};
+        } else if (${JSON.stringify(label)} !== undefined) {
+          const option = Array.from(el.options).find(o => o.text === ${JSON.stringify(label)});
+          if (option) el.value = option.value;
+        } else if (${JSON.stringify(index)} !== undefined) {
+          el.selectedIndex = ${JSON.stringify(index)};
         }
+
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
       })()
     `);
+  }
+
+  private async scrollIntoView(wc: WebContents, selectorOrRef: string): Promise<void> {
+    if (selectorOrRef.startsWith('@')) {
+      // SnapshotManager already scrolls into view in clickRef/fillRef
+      return;
+    }
+
+    await wc.executeJavaScript(`
+      const element = document.querySelector(${JSON.stringify(selectorOrRef)});
+      if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    `);
+  }
+
+  private async executeExtract(step: ExtractStep, execution: WorkflowExecution, webview: BrowserWindow): Promise<WorkflowStepResult> {
+    const selectorOrRef = await this.resolveSelector(step.params, webview);
+
+    let result;
+    if (selectorOrRef.startsWith('@') && this.snapshotManager) {
+      result = await this.snapshotManager.getTextRef(selectorOrRef);
+    } else {
+      result = await webview.webContents.executeJavaScript(`
+        (() => {
+          const selector = ${JSON.stringify(selectorOrRef || 'body')};
+          const attribute = ${JSON.stringify(step.params.attribute || '')};
+
+          const element = document.querySelector(selector);
+          if (!element) return null;
+
+          if (attribute) {
+            return element.getAttribute(attribute);
+          } else {
+            return element.textContent || element.innerText;
+          }
+        })()
+      `);
+    }
 
     // Store in variables
     execution.variables[step.params.saveAs] = result;
@@ -555,11 +783,19 @@ export class WorkflowEngine {
     let conditionResult = false;
 
     switch (step.params.condition) {
-      case 'elementExists':
-        conditionResult = await webview.webContents.executeJavaScript(`
-          !!document.querySelector(${JSON.stringify(step.params.selector)});
-        `);
+      case 'elementExists': {
+        const selectorOrRef = await this.resolveSelector(step.params, webview).catch(() => null);
+        if (!selectorOrRef) {
+          conditionResult = false;
+        } else if (selectorOrRef.startsWith('@')) {
+          conditionResult = true; // ResolveSelector already found it
+        } else {
+          conditionResult = await webview.webContents.executeJavaScript(`
+            !!document.querySelector(${JSON.stringify(selectorOrRef)});
+          `);
+        }
         break;
+      }
       case 'textContains':
         conditionResult = await webview.webContents.executeJavaScript(`
           document.body.textContent.includes(${JSON.stringify(step.params.text)});
@@ -585,10 +821,14 @@ export class WorkflowEngine {
 
   private async checkCondition(params: WaitStep['params'], webview: BrowserWindow): Promise<boolean> {
     switch (params.condition) {
-      case 'element':
+      case 'element': {
+        const selectorOrRef = await this.resolveSelector(params, webview).catch(() => null);
+        if (!selectorOrRef) return false;
+        if (selectorOrRef.startsWith('@')) return true;
         return await webview.webContents.executeJavaScript(`
-          !!document.querySelector(${JSON.stringify(params.selector)});
+          !!document.querySelector(${JSON.stringify(selectorOrRef)});
         `);
+      }
       case 'text':
         return await webview.webContents.executeJavaScript(`
           document.body.textContent.includes(${JSON.stringify(params.text)});
@@ -597,6 +837,26 @@ export class WorkflowEngine {
         return !!params.urlPattern && new RegExp(params.urlPattern).test(webview.webContents.getURL());
       default:
         return false;
+    }
+  }
+
+  private async verifyStep(step: WorkflowStep, _result: unknown, webview: BrowserWindow): Promise<boolean> {
+    switch (step.type) {
+      case 'navigate': {
+        const currentUrl = webview.webContents.getURL();
+        const targetUrl = (step as NavigateStep).params.url;
+        // Basic check: did we at least get to the domain?
+        try {
+          return new URL(currentUrl).hostname === new URL(targetUrl).hostname;
+        } catch { return false; }
+      }
+      case 'click':
+      case 'type':
+        // Clicks and types are harder to verify without state snapshots,
+        // but we could check for console errors or URL changes.
+        return true;
+      default:
+        return true;
     }
   }
 

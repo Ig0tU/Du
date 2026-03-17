@@ -234,4 +234,55 @@ export function registerAgentRoutes(router: Router, ctx: RouteContext): void {
       handleRouteError(res, e);
     }
   });
+
+  // ═══════════════════════════════════════════════
+  // AUTONOMOUS PLANNING (The "Century" Upgrade)
+  // ═══════════════════════════════════════════════
+
+  router.post('/agents/plan', async (req: Request, res: Response) => {
+    try {
+      const { goal, url } = req.body;
+      if (!goal) return res.status(400).json({ error: 'goal required' });
+
+      const planner = ctx.heuristicPlanner;
+      const plan = await planner.plan({ description: goal, url });
+
+      res.json(plan);
+    } catch (e) {
+      handleRouteError(res, e);
+    }
+  });
+
+  router.post('/agents/execute-goal', async (req: Request, res: Response) => {
+    try {
+      const { goal, url, variables } = req.body;
+      if (!goal) return res.status(400).json({ error: 'goal required' });
+
+      const planner = ctx.heuristicPlanner;
+      const plan = await planner.plan({ description: goal, url });
+
+      // Create a persistent task
+      const task = ctx.taskManager.createTask(
+        `Autonomous Goal: ${goal}`,
+        'claude',
+        'claude',
+        plan.steps.map((s: WorkflowStep) => ({
+          ...s,
+          riskLevel: (s as any).riskLevel || 'low',
+          requiresApproval: ctx.taskManager.needsApproval(s.type, (s.params as any).url)
+        }))
+      );
+
+      // Run the workflow
+      const executionId = await ctx.workflowEngine.saveWorkflow({
+        name: `Auto: ${goal}`,
+        steps: plan.steps,
+        variables: variables || {}
+      }).then(id => ctx.workflowEngine.runWorkflow(id, ctx.win, variables));
+
+      res.json({ ok: true, taskId: task.id, executionId, plan });
+    } catch (e) {
+      handleRouteError(res, e);
+    }
+  });
 }
