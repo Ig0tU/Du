@@ -445,6 +445,10 @@ export class TandemAPI {
     return this.server;
   }
 
+  getApp(): express.Application {
+    return this.app;
+  }
+
   stop(): void {
     this.server?.close();
   }

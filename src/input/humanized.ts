@@ -156,6 +156,58 @@ export async function humanizedClickAt(wc: WebContents, x: number, y: number): P
 }
 
 /**
+ * Hover coordinates using sendInputEvent mouseMove.
+ */
+export async function humanizedHoverAt(wc: WebContents, x: number, y: number): Promise<{ ok: boolean }> {
+  // Small random offset
+  const offsetX = gaussianRandom(0, 3);
+  const offsetY = gaussianRandom(0, 3);
+  const tx = x + offsetX;
+  const ty = y + offsetY;
+
+  // Move mouse to position using trained trajectory
+  const startX = Math.round(tx + gaussianRandom(0, 200));
+  const startY = Math.round(ty + gaussianRandom(0, 200));
+  const trajectory = behaviorReplay.getMouseTrajectory(startX, startY, tx, ty);
+
+  for (const point of trajectory) {
+    wc.sendInputEvent({ type: 'mouseMove', x: point.x, y: point.y });
+    if (point.delayMs > 0) {
+      await new Promise(r => setTimeout(r, point.delayMs));
+    }
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Type text using sendInputEvent character by character into currently focused element.
+ */
+export async function humanizedTypeIntoFocused(wc: WebContents, text: string, clear: boolean = false): Promise<{ ok: boolean }> {
+  // Clear existing content if requested (Cmd+A then Backspace)
+  if (clear) {
+    wc.sendInputEvent({ type: 'keyDown', keyCode: 'a', modifiers: ['meta'] });
+    wc.sendInputEvent({ type: 'keyUp', keyCode: 'a', modifiers: ['meta'] });
+    await typingDelay();
+    wc.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
+    wc.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
+    await humanDelay(80, 150);
+  }
+
+  const chars = Array.from(text).slice(0, MAX_TYPED_CHARS);
+
+  // Type each character with humanized delays
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i];
+    const nextChar = i + 1 < chars.length ? chars[i + 1] : '';
+    wc.sendInputEvent({ type: 'char', keyCode: char });
+    await typingDelay(char, nextChar);
+  }
+
+  return { ok: true };
+}
+
+/**
  * Type text using sendInputEvent character by character (Event.isTrusted = true).
  * Humanized typing rhythm with gaussian delays.
  */

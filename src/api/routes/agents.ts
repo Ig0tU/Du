@@ -266,10 +266,10 @@ export function registerAgentRoutes(router: Router, ctx: RouteContext): void {
         `Autonomous Goal: ${goal}`,
         'claude',
         'claude',
-        plan.steps.map((s: WorkflowStep) => ({
+        plan.steps.map((s: any) => ({
           ...s,
-          riskLevel: (s as any).riskLevel || 'low',
-          requiresApproval: ctx.taskManager.needsApproval(s.type, (s.params as any).url)
+          riskLevel: s.riskLevel || 'low',
+          requiresApproval: ctx.taskManager.needsApproval(s.type, s.params?.url)
         }))
       );
 
