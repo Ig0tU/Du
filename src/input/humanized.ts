@@ -116,6 +116,46 @@ export async function humanizedClick(wc: WebContents, selector: string): Promise
 }
 
 /**
+ * Click coordinates using sendInputEvent (OS-level, Event.isTrusted = true).
+ * Uses humanized delays and mouse movement.
+ */
+export async function humanizedClickAt(wc: WebContents, x: number, y: number): Promise<{ ok: boolean }> {
+  // Small random offset
+  const offsetX = gaussianRandom(0, 3);
+  const offsetY = gaussianRandom(0, 3);
+  const tx = x + offsetX;
+  const ty = y + offsetY;
+
+  // Pre-click hesitation (hover → click delay)
+  await humanDelay(50, 150);
+
+  // Move mouse to position using trained trajectory
+  const startX = Math.round(tx + gaussianRandom(0, 200));
+  const startY = Math.round(ty + gaussianRandom(0, 200));
+  const trajectory = behaviorReplay.getMouseTrajectory(startX, startY, tx, ty);
+
+  for (const point of trajectory) {
+    wc.sendInputEvent({ type: 'mouseMove', x: point.x, y: point.y });
+    if (point.delayMs > 0) {
+      await new Promise(r => setTimeout(r, point.delayMs));
+    }
+  }
+
+  await humanDelay(30, 80);
+
+  // Mouse down
+  wc.sendInputEvent({ type: 'mouseDown', x: tx, y: ty, button: 'left', clickCount: 1 });
+
+  // Brief hold
+  await humanDelay(40, 120);
+
+  // Mouse up
+  wc.sendInputEvent({ type: 'mouseUp', x: tx, y: ty, button: 'left', clickCount: 1 });
+
+  return { ok: true };
+}
+
+/**
  * Type text using sendInputEvent character by character (Event.isTrusted = true).
  * Humanized typing rhythm with gaussian delays.
  */
@@ -151,6 +191,41 @@ export async function humanizedType(wc: WebContents, selector: string, text: str
     const nextChar = i + 1 < chars.length ? chars[i + 1] : '';
     wc.sendInputEvent({ type: 'char', keyCode: char });
     await typingDelay(char, nextChar);
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Hover an element using sendInputEvent mouseMove.
+ * Uses humanized mouse movement trajectory.
+ */
+export async function humanizedHover(wc: WebContents, selector: string): Promise<{ ok: boolean; error?: string }> {
+  const pos = await getElementPosition(wc, selector);
+  if (!pos.found) {
+    return { ok: false, error: 'Element not found' };
+  }
+
+  // Small random offset within element
+  const offsetX = gaussianRandom(0, 3);
+  const offsetY = gaussianRandom(0, 3);
+  const x = pos.x + offsetX;
+  const y = pos.y + offsetY;
+
+  // Move mouse to position using trained trajectory
+  const startX = Math.round(x + gaussianRandom(0, 200));
+  const startY = Math.round(y + gaussianRandom(0, 200));
+  const trajectory = behaviorReplay.getMouseTrajectory(startX, startY, x, y);
+
+  for (const point of trajectory) {
+    wc.sendInputEvent({
+      type: 'mouseMove',
+      x: point.x,
+      y: point.y,
+    });
+    if (point.delayMs > 0) {
+      await new Promise(r => setTimeout(r, point.delayMs));
+    }
   }
 
   return { ok: true };

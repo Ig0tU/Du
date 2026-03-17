@@ -521,6 +521,11 @@ export function createMockContext(): RouteContext {
       reorderItems: vi.fn().mockReturnValue(true),
       destroy: vi.fn(),
     } as any,
+
+    // ── heuristicPlanner ────────────────────────
+    heuristicPlanner: {
+      plan: vi.fn().mockResolvedValue({ goal: {}, steps: [], estimatedDifficulty: 'low' }),
+    } as any,
   };
 
   return ctx;

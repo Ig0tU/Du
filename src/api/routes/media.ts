@@ -267,6 +267,41 @@ export function registerMediaRoutes(router: Router, ctx: RouteContext): void {
     }
   });
 
+  router.post('/screenshot/application', async (req: Request, res: Response) => {
+    try {
+      const activeTab = ctx.tabManager.getActiveTab();
+      const currentUrl = activeTab?.url || 'tandem://window';
+      const result = await ctx.drawManager.captureApplicationScreenshot(currentUrl);
+      if (result.ok) {
+        res.json(result);
+      } else {
+        res.status(500).json(result);
+      }
+    } catch (e) {
+      handleRouteError(res, e);
+    }
+  });
+
+  router.post('/screenshot/region', async (req: Request, res: Response) => {
+    try {
+      const { x, y, width, height } = req.body;
+      if (x === undefined || y === undefined || width === undefined || height === undefined) {
+        res.status(400).json({ error: 'x, y, width, height required' });
+        return;
+      }
+      const activeTab = ctx.tabManager.getActiveTab();
+      const currentUrl = activeTab?.url || 'tandem://window';
+      const result = await ctx.drawManager.captureRegionScreenshot({ x, y, width, height }, currentUrl);
+      if (result.ok) {
+        res.json(result);
+      } else {
+        res.status(500).json(result);
+      }
+    } catch (e) {
+      handleRouteError(res, e);
+    }
+  });
+
   router.get('/integrations/google-photos/status', (_req: Request, res: Response) => {
     try {
       res.json({

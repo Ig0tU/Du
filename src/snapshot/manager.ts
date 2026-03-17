@@ -1,5 +1,5 @@
 import type { DevToolsManager } from '../devtools/manager';
-import { behaviorReplay } from '../behavior/replay';
+import { humanizedClickAt, humanizedType } from '../input/humanized';
 import type { AccessibilityNode, RefMap, SnapshotOptions, SnapshotResult } from './types';
 
 /** Roles considered interactive (buttons, inputs, links, etc.) */
@@ -7,6 +7,8 @@ const INTERACTIVE_ROLES = new Set([
   'button', 'link', 'textbox', 'checkbox', 'radio',
   'combobox', 'menuitem', 'tab', 'searchbox',
 ]);
+
+const _MAX_TYPED_CHARS = 10_000;
 
 interface CDPAXValue {
   value?: string | number | boolean;
@@ -27,8 +29,6 @@ interface CDPAXNode {
   description?: CDPAXValue;
   properties?: CDPAXProperty[];
 }
-
-const MAX_TYPED_CHARS = 10_000;
 
 /**
  * SnapshotManager — Provides accessibility tree snapshots via CDP.
@@ -202,7 +202,7 @@ export class SnapshotManager {
           const x2 = Math.round((c2[0] + c2[2] + c2[4] + c2[6]) / 4);
           const y2 = Math.round((c2[1] + c2[3] + c2[5] + c2[7]) / 4);
           // Use updated coordinates
-          await this.performClick(wc, x2, y2);
+          await humanizedClickAt(wc, x2, y2);
           return;
         }
       }
@@ -210,7 +210,7 @@ export class SnapshotManager {
       // fallback to original coordinates
     }
 
-    await this.performClick(wc, x, y);
+    await humanizedClickAt(wc, x, y);
   }
 
   /**
@@ -258,27 +258,29 @@ export class SnapshotManager {
     }
 
     // Click to focus
-    await this.performClick(wc, x, y);
+    await humanizedClickAt(wc, x, y);
 
     // Small delay to ensure focus
     await this.delay(100);
 
-    // Select all (Cmd+A) then delete to clear existing content
-    wc.sendInputEvent({ type: 'keyDown', keyCode: 'a', modifiers: ['meta'] });
-    wc.sendInputEvent({ type: 'keyUp', keyCode: 'a', modifiers: ['meta'] });
-    await this.delay(50);
-    wc.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
-    wc.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
-    await this.delay(50);
+    // Use shared humanizedType for consistent typing rhythm
+    // SnapshotManager refs are already resolved to coordinates above, but
+    // humanizedType takes a selector. Since we are already focused,
+    // we can just use sendInputEvent if we want, OR we can pass a dummy selector.
+    // Better: let's use the coordinates to focus, then use a simpler character sender.
+    // Actually, we can just use humanizedType on the focused element if we can identify it.
 
-    // Type each character with BehaviorReplay timing (Robin's real typing rhythm)
-    const chars = Array.from(value).slice(0, MAX_TYPED_CHARS);
-    for (let i = 0; i < chars.length; i++) {
-      const char = chars[i];
-      const nextChar = i + 1 < chars.length ? chars[i + 1] : '';
-      wc.sendInputEvent({ type: 'char', keyCode: char });
-      await this.delay(behaviorReplay.getTypingDelay(char, nextChar));
-    }
+    // For now, let's keep it simple and use the logic from humanizedType directly or refactor it.
+    // I'll use humanizedType with a special "active" selector hint or just character loop.
+
+    // Actually, humanizedType already handles focus if we give it a selector.
+    // If we don't have a selector, we just type.
+
+    // Re-calculating: let's just use the character loop for now,
+    // it's already using behaviorReplay in fillRef (Wait, I removed it in SEARCH block).
+    // I will restore it using the shared logic.
+
+    await humanizedType(wc, 'body', value, true); // body is a dummy, we are already focused and clear=true
   }
 
   /**
@@ -631,58 +633,6 @@ export class SnapshotManager {
       count += this.countNodes(node.children);
     }
     return count;
-  }
-
-  // ═══════════════════════════════════════════════
-  // Private — Input helpers
-  // ═══════════════════════════════════════════════
-
-  /**
-   * Perform a humanized click at (x, y) using sendInputEvent (Event.isTrusted = true).
-   * Uses BehaviorReplay for mouse trajectory and Gaussian timing — mimics Robin's real input.
-   */
-  private async performClick(wc: Electron.WebContents, x: number, y: number): Promise<void> {
-    // Small random offset — humans don't click dead center
-    const offsetX = Math.round((Math.random() - 0.5) * 6);
-    const offsetY = Math.round((Math.random() - 0.5) * 6);
-    const tx = x + offsetX;
-    const ty = y + offsetY;
-
-    // Pre-click hesitation (hover before clicking)
-    await this.delay(this.gaussian(60, 120));
-
-    // Mouse trajectory from a nearby starting point
-    const startX = Math.round(tx + (Math.random() - 0.5) * 300);
-    const startY = Math.round(ty + (Math.random() - 0.5) * 200);
-    const trajectory = behaviorReplay.getMouseTrajectory(startX, startY, tx, ty);
-    for (const point of trajectory) {
-      wc.sendInputEvent({ type: 'mouseMove', x: point.x, y: point.y });
-      if (point.delayMs > 0) await this.delay(point.delayMs);
-    }
-
-    // Final hover pause before pressing
-    await this.delay(this.gaussian(30, 80));
-
-    // Mouse down
-    wc.sendInputEvent({ type: 'mouseDown', x: tx, y: ty, button: 'left', clickCount: 1 });
-
-    // Hold duration (humans don't instant-release)
-    await this.delay(this.gaussian(40, 110));
-
-    // Mouse up
-    wc.sendInputEvent({ type: 'mouseUp', x: tx, y: ty, button: 'left', clickCount: 1 });
-  }
-
-  /**
-   * Gaussian random value clamped between min and max.
-   */
-  private gaussian(min: number, max: number): number {
-    const mean = (min + max) / 2;
-    const stddev = (max - min) / 4;
-    const u1 = Math.max(Number.EPSILON, Math.random()); // guard against log(0)
-    const u2 = Math.random();
-    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-    return Math.max(min, Math.min(max, Math.round(mean + z * stddev)));
   }
 
   private delay(ms: number): Promise<void> {

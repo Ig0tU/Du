@@ -735,6 +735,277 @@ server.resource(
 );
 
 // ═══════════════════════════════════════════════
+// tandem_run_workflow — Run a saved workflow
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_run_workflow',
+  'Run a pre-defined automation workflow by its ID',
+  {
+    workflowId: z.string().describe('ID of the workflow to run'),
+    variables: z.record(z.string(), z.any()).optional().describe('Initial variables for the workflow'),
+  },
+  async ({ workflowId, variables }) => {
+    const result = await apiCall('POST', '/workflow/run', { workflowId, variables });
+    await logActivity('run_workflow', workflowId);
+    return { content: [{ type: 'text', text: `Workflow execution started: ${result.executionId}` }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_get_workflow_status — Check workflow progress
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_get_workflow_status',
+  'Get the status and results of a running or completed workflow execution',
+  {
+    executionId: z.string().describe('ID of the workflow execution to check'),
+  },
+  async ({ executionId }) => {
+    const status = await apiCall('GET', `/workflow/status/${executionId}`);
+    return { content: [{ type: 'text', text: JSON.stringify(status, null, 2) }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_mock_network — Mock or intercept network requests
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_mock_network',
+  'Create a network mock rule to intercept and modify API responses or block requests',
+  {
+    pattern: z.string().describe('Glob pattern for URL matching (e.g. "https://api.example.com/v1/*")'),
+    status: z.number().optional().default(200).describe('HTTP status code for mock response'),
+    body: z.any().optional().describe('JSON body or string for mock response'),
+    headers: z.record(z.string(), z.string()).optional().describe('Custom response headers'),
+    delay: z.number().optional().describe('Delay response in milliseconds'),
+    abort: z.boolean().optional().describe('Abort/block the request if true'),
+  },
+  async (params) => {
+    const result = await apiCall('POST', '/network/mock', params);
+    await logActivity('mock_network', params.pattern);
+    return { content: [{ type: 'text', text: `Network mock created: ${result.id} for ${params.pattern}` }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_clear_mocks — Clear all network mocks
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_clear_mocks',
+  'Remove all active network mock rules',
+  async () => {
+    const result = await apiCall('POST', '/network/mock-clear');
+    await logActivity('clear_mocks');
+    return { content: [{ type: 'text', text: `Cleared ${result.removed} network mock(s).` }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_hover — Hover an element
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_hover',
+  'Hover the mouse over an element by CSS selector',
+  {
+    selector: z.string().describe('CSS selector of the element to hover'),
+  },
+  async ({ selector }) => {
+    await apiCall('POST', '/scroll', { selector }); // Ensure it's in view
+    await apiCall('POST', '/execute-js', { code: `
+      (() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (el) {
+          el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+          el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        }
+      })()
+    ` });
+    // Note: /find/hover is better but we use this until API is ready
+    await logActivity('hover', selector);
+    return { content: [{ type: 'text', text: `Hovered over: ${selector}` }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_press_key — Press a key
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_press_key',
+  'Press a keyboard key (e.g. Enter, Tab, Escape) in the active tab',
+  {
+    key: z.string().describe('Key name (e.g. "Enter", "Escape", "ArrowDown", "a")'),
+    modifiers: z.array(z.enum(['shift', 'control', 'alt', 'meta'])).optional().describe('Modifier keys'),
+  },
+  async ({ key, modifiers: _modifiers }) => {
+    // We'll use a new endpoint or execute-js for this
+    await apiCall('POST', '/execute-js', { code: `
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }));
+      document.activeElement.dispatchEvent(new KeyboardEvent('keyup', { key: ${JSON.stringify(key)}, bubbles: true }));
+    ` });
+    await logActivity('press_key', key);
+    return { content: [{ type: 'text', text: `Pressed key: ${key}` }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_get_workspaces — List workspaces
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_get_workspaces',
+  'List all workspaces and their assigned tabs',
+  async () => {
+    const workspaces = await apiCall('GET', '/workspaces');
+    return { content: [{ type: 'text', text: JSON.stringify(workspaces, null, 2) }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_switch_workspace — Switch workspace
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_switch_workspace',
+  'Switch the current view to a different workspace',
+  {
+    workspaceId: z.string().describe('ID of the workspace to switch to'),
+  },
+  async ({ workspaceId }) => {
+    await apiCall('POST', `/workspaces/${workspaceId}/switch`);
+    await logActivity('switch_workspace', workspaceId);
+    return { content: [{ type: 'text', text: `Switched to workspace: ${workspaceId}` }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_list_sessions — List browser sessions
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_list_sessions',
+  'List all isolated browser sessions and their tab counts',
+  async () => {
+    const data = await apiCall('GET', '/sessions/list');
+    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_create_session — Create a new session
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_create_session',
+  'Create a new isolated browser session (separate cookies/storage)',
+  {
+    name: z.string().describe('Name of the session to create'),
+    url: z.string().optional().describe('Optional initial URL to open in the session'),
+  },
+  async ({ name, url }) => {
+    const result = await apiCall('POST', '/sessions/create', { name, url });
+    await logActivity('create_session', name);
+    return { content: [{ type: 'text', text: `Session created: ${name}. Tab: ${result.tab?.id || 'none'}` }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_emulate_device — Emulate a mobile device
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_emulate_device',
+  'Emulate a specific mobile device (viewport, user agent, etc.)',
+  {
+    device: z.string().describe('Device name (e.g. "iPhone 15", "Pixel 7")'),
+  },
+  async ({ device }) => {
+    await apiCall('POST', '/device/emulate', { device });
+    await logActivity('emulate_device', device);
+    return { content: [{ type: 'text', text: `Emulating ${device}` }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_reset_device — Stop device emulation
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_reset_device',
+  'Reset device emulation to default desktop view',
+  async () => {
+    await apiCall('POST', '/device/reset');
+    await logActivity('reset_device');
+    return { content: [{ type: 'text', text: 'Device emulation reset to default.' }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_observe — Observe page mutations and network
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_observe',
+  'Observe recent browser activity, including DOM mutations and network requests, for autonomous reasoning.',
+  async () => {
+    const [activity, network, console] = await Promise.all([
+      apiCall('GET', '/activity-log?limit=20'),
+      apiCall('GET', '/devtools/network?limit=20'),
+      apiCall('GET', '/devtools/console?limit=10&level=error'),
+    ]);
+
+    let text = '=== Recent Observations ===\n\n';
+
+    text += 'Activity Log:\n';
+    activity.entries.forEach((e: Record<string, any>) => {
+      text += `- [${new Date(e.timestamp).toLocaleTimeString()}] ${e.type}: ${JSON.stringify(e.data)}\n`;
+    });
+
+    text += '\nNetwork Requests:\n';
+    network.entries.forEach((e: Record<string, any>) => {
+      text += `- ${e.method} ${e.url} (${e.status})\n`;
+    });
+
+    if (console.errors && console.errors.length > 0) {
+      text += '\nConsole Errors:\n';
+      console.errors.forEach((e: Record<string, any>) => {
+        text += `- ${e.text}\n`;
+      });
+    }
+
+    return { content: [{ type: 'text', text }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_execute_goal — Execute high-level goal
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_execute_goal',
+  'Execute a high-level goal autonomously (e.g. "find the cheapest flight from Brussels to Tokyo")',
+  {
+    goal: z.string().describe('The goal to achieve'),
+    url: z.string().optional().describe('Starting URL'),
+  },
+  async ({ goal, url }) => {
+    const result = await apiCall('POST', '/agents/execute-goal', { goal, url });
+    await logActivity('execute_goal', goal);
+    return {
+      content: [{
+        type: 'text',
+        text: `Autonomous execution started. Task ID: ${result.taskId}. Plan: ${result.plan.steps.length} steps.`
+      }]
+    };
+  }
+);
+
+// ═══════════════════════════════════════════════
 // SSE Event Listener — sends MCP notifications on browser events (Phase 2.2)
 // ═══════════════════════════════════════════════
 

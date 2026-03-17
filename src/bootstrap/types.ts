@@ -44,6 +44,7 @@ import type { ContentExtractor } from '../content/extractor';
 import type { WorkflowEngine } from '../workflow/engine';
 import type { LoginManager } from '../auth/login-manager';
 import type { GooglePhotosManager } from '../integrations/google-photos';
+import type { HeuristicPlanner } from '../agents/planner';
 
 export interface RuntimeManagers {
   configManager: ConfigManager;
@@ -90,6 +91,7 @@ export interface RuntimeManagers {
   sessionRestoreManager: SessionRestoreManager;
   contentExtractor: ContentExtractor;
   workflowEngine: WorkflowEngine;
+  heuristicPlanner: HeuristicPlanner;
   loginManager: LoginManager;
   googlePhotosManager: GooglePhotosManager;
 }
