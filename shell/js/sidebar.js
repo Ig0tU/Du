@@ -13,6 +13,7 @@
       bookmarks:  { svg: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>`, brand: null },
       history:    { svg: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`, brand: null },
       downloads:  { svg: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>`, brand: null },
+      automation: { svg: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12l.041-.02a.75.75 0 0 0-.714-.714A18.06 18.06 0 0 0 15.59 14.37ZM9.75 17.25v4.25a.75.75 0 0 1-.41.67l-2.58 1.29a.75.75 0 0 1-1.09-.58l-.42-2.93m4.5-2.66a14.98 14.98 0 0 1-6.16-12.12L3.66 5.09a.75.75 0 0 0-.714.714 18.06 18.06 0 0 0 6.804 11.826ZM6.25 18.94l-2.58 1.29a.75.75 0 0 1-1.08-.58l-.42-2.93M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>`, brand: null },
 
       // === COMMUNICATION ITEMS (colored brand icons, custom background) ===
       calendar:  { svg: `<svg viewBox="0 0 24 24" fill="white"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>`, brand: '#4285F4' },
@@ -342,6 +343,8 @@
         loadHistoryPanel();
       } else if (newActive === 'pinboards') {
         loadPinboardPanel();
+      } else if (newActive === 'automation') {
+        loadAutomationPanel();
       } else {
         hideWebviews();
         const content = document.getElementById('sidebar-panel-content');
@@ -1397,6 +1400,127 @@
         });
         container.querySelectorAll('.pb-drag-over').forEach(el => el.classList.remove('pb-drag-over'));
       });
+    }
+
+    // === AUTOMATION PANEL MODULE (Dev Suite) ===
+    async function loadAutomationPanel() {
+      const content = document.getElementById('sidebar-panel-content');
+      hideWebviews();
+      content.classList.remove('webview-mode');
+
+      safeSetPanelHTML(`
+        <div class="automation-panel">
+          <div class="auto-goal-input">
+            <textarea id="auto-goal-text" placeholder="Enter an autonomous goal (e.g. 'Search for latest AI news and extract the top headline')"></textarea>
+            <button id="auto-run-btn" class="auto-primary-btn">Execute Goal autonomously</button>
+          </div>
+
+          <div class="auto-stats">
+            <div class="auto-stat-card">
+              <span class="auto-stat-label">Tasks</span>
+              <span id="auto-task-count" class="auto-stat-value">0</span>
+            </div>
+            <div class="auto-stat-card">
+              <span class="auto-stat-label">Integrity</span>
+              <span id="auto-integrity" class="auto-stat-value">100%</span>
+            </div>
+          </div>
+
+          <div class="auto-section">
+            <div class="auto-section-header">Live Tasks</div>
+            <div id="auto-task-list" class="auto-list">
+              <div class="auto-empty">No active tasks</div>
+            </div>
+          </div>
+
+          <div class="auto-section">
+            <div class="auto-section-header">Heuristic Observations</div>
+            <div id="auto-observe-log" class="auto-list">
+              <div class="auto-empty">Waiting for activity...</div>
+            </div>
+          </div>
+        </div>`);
+
+      // Refresh data
+      refreshAutomationData();
+
+      document.getElementById('auto-run-btn')?.addEventListener('click', async () => {
+        const goal = document.getElementById('auto-goal-text').value.trim();
+        if (!goal) return;
+
+        const btn = document.getElementById('auto-run-btn');
+        btn.disabled = true;
+        btn.textContent = 'Planning...';
+
+        try {
+          const res = await fetch('http://localhost:8765/agents/execute-goal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+            body: JSON.stringify({ goal })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            document.getElementById('auto-goal-text').value = '';
+            refreshAutomationData();
+          }
+        } catch (e) {
+          console.error('Goal execution failed:', e);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Execute Goal autonomously';
+        }
+      });
+    }
+
+    async function refreshAutomationData() {
+      if (!config.activeItemId === 'automation') return;
+
+      try {
+        const [tasksRes, activityRes] = await Promise.all([
+          fetch('http://localhost:8765/tasks', { headers: { Authorization: `Bearer ${TOKEN}` } }),
+          fetch('http://localhost:8765/activity-log?limit=5', { headers: { Authorization: `Bearer ${TOKEN}` } })
+        ]);
+
+        const tasks = await tasksRes.json();
+        const activity = await activityRes.json();
+
+        // Render tasks
+        const taskList = document.getElementById('auto-task-list');
+        if (taskList) {
+          if (tasks.length === 0) {
+            taskList.innerHTML = '<div class="auto-empty">No active tasks</div>';
+          } else {
+            taskList.innerHTML = tasks.map(t => `
+              <div class="auto-item">
+                <div class="auto-item-title">${pbEscape(t.description)}</div>
+                <div class="auto-item-meta">Status: ${t.status} • Steps: ${t.steps.length}</div>
+              </div>
+            `).join('');
+          }
+          document.getElementById('auto-task-count').textContent = tasks.length;
+        }
+
+        // Render observations
+        const observeLog = document.getElementById('auto-observe-log');
+        if (observeLog) {
+          if (!activity.entries || activity.entries.length === 0) {
+            observeLog.innerHTML = '<div class="auto-empty">Waiting for activity...</div>';
+          } else {
+            observeLog.innerHTML = activity.entries.map(e => `
+              <div class="auto-observe-item">
+                <span class="auto-observe-type">${e.type}</span>
+                <span class="auto-observe-desc">${pbEscape(JSON.stringify(e.data).substring(0, 50))}...</span>
+              </div>
+            `).join('');
+          }
+        }
+
+      } catch (e) { /* silent */ }
+
+      // Polling
+      if (config.activeItemId === 'automation') {
+        setTimeout(refreshAutomationData, 3000);
+      }
     }
 
     async function pbCreateBoard() {

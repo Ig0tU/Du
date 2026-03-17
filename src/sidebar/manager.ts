@@ -30,7 +30,8 @@ const DEFAULT_CONFIG: SidebarConfig = {
     { id: 'bookmarks',  label: 'Bookmarks',       icon: '', type: 'panel',   enabled: true, order: 21 },
     { id: 'history',    label: 'History',         icon: '', type: 'panel',   enabled: true, order: 22 },
     { id: 'downloads',  label: 'Downloads',       icon: '', type: 'panel',   enabled: true, order: 23 },
-    { id: 'news',       label: 'Personal News',   icon: '', type: 'panel',   enabled: true, order: 24 },
+    { id: 'automation', label: 'Dev Suite',       icon: '', type: 'panel',   enabled: true, order: 24 },
+    { id: 'news',       label: 'Personal News',   icon: '', type: 'panel',   enabled: true, order: 25 },
   ]
 };
 
