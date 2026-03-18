@@ -493,8 +493,8 @@
     .approval-card {
       margin: 6px 8px;
       padding: 10px 12px;
-      background: rgba(124, 58, 237, 0.15);
-      border: 1px solid rgba(124, 58, 237, 0.3);
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.25);
       border-radius: 8px;
       font-size: 12px;
     }
@@ -576,7 +576,7 @@
     }
 
     .tab-header.ai-controlled {
-      border-bottom: 2px solid #7c3aed;
+      border-bottom: 2px solid #4f46e5;
     }
 
     /* Source styling — visual distinction per origin */
@@ -585,7 +585,7 @@
     }
 
     .chat-msg.source-claude {
-      border-left: 3px solid #7c3aed;
+      border-left: 3px solid #4f46e5;
     }
 
     .chat-msg.source-robin {
@@ -593,8 +593,8 @@
     }
 
     .chat-msg.claude {
-      background: rgba(124, 58, 237, 0.15);
-      border: 1px solid rgba(124, 58, 237, 0.2);
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
       align-self: flex-start;
       color: var(--text);
     }

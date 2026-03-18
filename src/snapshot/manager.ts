@@ -368,6 +368,29 @@ export class SnapshotManager {
   }
 
   /**
+   * Get the box model for an element by @ref.
+   * Returns the content quad center coordinates.
+   */
+  async getBoxModelForRef(ref: string): Promise<{ x: number; y: number }> {
+    const backendNodeId = this.refBackendNodeMap.get(ref);
+    if (backendNodeId === undefined) {
+      throw new Error(`Ref not found: ${ref}`);
+    }
+
+    await this.devtools.sendCommand('DOM.enable', {});
+    const box = await this.devtools.sendCommand('DOM.getBoxModel', { backendNodeId });
+    if (!box.model?.content) {
+      throw new Error(`Cannot get box model for ${ref}`);
+    }
+
+    const c = box.model.content;
+    return {
+      x: Math.round((c[0] + c[2] + c[4] + c[6]) / 4),
+      y: Math.round((c[1] + c[3] + c[5] + c[7]) / 4)
+    };
+  }
+
+  /**
    * Get the current ref map (for debugging / API responses).
    */
   getRefMap(): RefMap {

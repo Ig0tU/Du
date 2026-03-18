@@ -134,7 +134,7 @@
         if (currentOnboardingStep === 4 || nextBtn.textContent === 'Start!' || nextBtn.getAttribute('data-final-step') === 'true') {
           // Final step - hide and save
           hideOnboarding();
-          fetch('http://localhost:8765/config', {
+          fetch('/config', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ general: { onboardingComplete: true } })
@@ -153,7 +153,7 @@
       if (skipBtn) skipBtn.addEventListener('click', () => {
         hideOnboarding();
         // Save that onboarding was completed
-        fetch('http://localhost:8765/config', {
+        fetch('/config', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ general: { onboardingComplete: true } })
@@ -167,19 +167,19 @@
       try {
         statusEl.innerHTML = '📥 Importing Chrome bookmarks...';
 
-        const bookmarksResp = await fetch('http://localhost:8765/import/chrome/bookmarks', { method: 'POST' });
+        const bookmarksResp = await fetch('/import/chrome/bookmarks', { method: 'POST' });
         if (bookmarksResp.ok) {
           statusEl.innerHTML += '<br>✅ Bookmarks imported';
         }
 
         statusEl.innerHTML += '<br>📚 Importing history...';
-        const historyResp = await fetch('http://localhost:8765/import/chrome/history', { method: 'POST' });
+        const historyResp = await fetch('/import/chrome/history', { method: 'POST' });
         if (historyResp.ok) {
           statusEl.innerHTML += '<br>✅ History imported';
         }
 
         statusEl.innerHTML += '<br>🍪 Importing cookies...';
-        const cookiesResp = await fetch('http://localhost:8765/import/chrome/cookies', { method: 'POST' });
+        const cookiesResp = await fetch('/import/chrome/cookies', { method: 'POST' });
         if (cookiesResp.ok) {
           statusEl.innerHTML += '<br>✅ Cookies imported';
         } else {
@@ -200,7 +200,7 @@
     async function completeOnboarding() {
       try {
         // Mark onboarding as complete
-        await fetch('http://localhost:8765/config', {
+        await fetch('/config', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -227,7 +227,7 @@
     // Check if onboarding should be shown
     async function checkOnboarding() {
       try {
-        const response = await fetch('http://localhost:8765/config');
+        const response = await fetch('/config');
         if (response.ok) {
           const config = await response.json();
           const onboardingComplete = config.general?.onboardingComplete || false;
@@ -255,7 +255,7 @@
 
     async function loadThemeFromConfig() {
       try {
-        const response = await fetch('http://localhost:8765/config');
+        const response = await fetch('/config');
         if (response.ok) {
           const config = await response.json();
           const theme = config.theme || 'dark';
@@ -304,7 +304,7 @@
 
     async function checkVaultStatus() {
       try {
-        const res = await fetch('http://localhost:8765/passwords/status');
+        const res = await fetch('/passwords/status');
         if (!res.ok) return;
         const data = await res.json();
         isVaultUnlocked = data.unlocked;
@@ -363,7 +363,7 @@
         }
 
         try {
-          const res = await fetch('http://localhost:8765/passwords/unlock', {
+          const res = await fetch('/passwords/unlock', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password })
@@ -391,7 +391,7 @@
     if (vaultLockBtn) {
       vaultLockBtn.addEventListener('click', async () => {
         try {
-          await fetch('http://localhost:8765/passwords/lock', {
+          await fetch('/passwords/lock', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
           });

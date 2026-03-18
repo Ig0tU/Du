@@ -16,7 +16,7 @@
     async function initClaroNote() {
       if (claroNoteInitialized) return;
       try {
-        const response = await fetch('http://localhost:8765/claronote/status');
+        const response = await fetch('/claronote/status');
         const data = await response.json();
         if (data.authenticated) {
           showClaroNoteMain(data.user);
@@ -69,7 +69,7 @@
       loginBtn.textContent = 'Logging in...';
       loginBtn.disabled = true;
       try {
-        const response = await fetch('http://localhost:8765/claronote/login', {
+        const response = await fetch('/claronote/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password })
@@ -126,7 +126,7 @@
         startRecordingTimer();
 
         // Notify server (state tracking only)
-        fetch('http://localhost:8765/claronote/record/start', { method: 'POST' }).catch(() => { });
+        fetch('/claronote/record/start', { method: 'POST' }).catch(() => { });
       } catch (error) {
         showClaroNoteError('Microphone not available');
       }
@@ -159,7 +159,7 @@
             reader.onloadend = async () => {
               try {
                 const base64 = reader.result.split(',')[1];
-                const resp = await fetch('http://localhost:8765/claronote/upload', {
+                const resp = await fetch('/claronote/upload', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ audioBase64: base64, duration })
@@ -186,7 +186,7 @@
         };
 
         claroNoteMediaRecorder.stop();
-        fetch('http://localhost:8765/claronote/record/stop', { method: 'POST' }).catch(() => { });
+        fetch('/claronote/record/stop', { method: 'POST' }).catch(() => { });
       });
     }
 
@@ -244,7 +244,7 @@
 
     async function loadClaroNoteNotes() {
       try {
-        const response = await fetch('http://localhost:8765/claronote/notes?limit=10');
+        const response = await fetch('/claronote/notes?limit=10');
         const data = await response.json();
 
         if (data.notes) {
@@ -384,7 +384,7 @@
 
     async function pollNoteStatus(noteId) {
       try {
-        const response = await fetch(`http://localhost:8765/claronote/notes/${noteId}`);
+        const response = await fetch(`/claronote/notes/${noteId}`);
         const data = await response.json();
 
         if (data.note && (data.note.status === 'PROCESSING' || data.note.status === 'UPLOADING')) {

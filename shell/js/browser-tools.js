@@ -186,7 +186,7 @@
           bookmarkStar.classList.remove('bookmarked');
           return;
         }
-        const resp = await fetch(`http://localhost:8765/bookmarks/check?url=${encodeURIComponent(url)}`, {
+        const resp = await fetch(`/bookmarks/check?url=${encodeURIComponent(url)}`, {
           headers: { Authorization: `Bearer ${bmToken()}` }
         });
         if (resp.ok) {
@@ -212,7 +212,7 @@
 
     async function loadFolderOptions() {
       try {
-        const res = await fetch('http://localhost:8765/bookmarks', {
+        const res = await fetch('/bookmarks', {
           headers: { Authorization: `Bearer ${bmToken()}` }
         });
         const data = await res.json();
@@ -258,7 +258,7 @@
 
       let existingBookmark = null;
       try {
-        const resp = await fetch(`http://localhost:8765/bookmarks/check?url=${encodeURIComponent(url)}`, {
+        const resp = await fetch(`/bookmarks/check?url=${encodeURIComponent(url)}`, {
           headers: { Authorization: `Bearer ${bmToken()}` }
         });
         if (resp.ok) {
@@ -296,18 +296,18 @@
       if (!name) return;
       try {
         if (bmPopupState.bookmarkId) {
-          await fetch('http://localhost:8765/bookmarks/update', {
+          await fetch('/bookmarks/update', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bmToken()}` },
             body: JSON.stringify({ id: bmPopupState.bookmarkId, name, url: bmPopupState.url }),
           });
-          await fetch('http://localhost:8765/bookmarks/move', {
+          await fetch('/bookmarks/move', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bmToken()}` },
             body: JSON.stringify({ id: bmPopupState.bookmarkId, parentId }),
           });
         } else {
-          await fetch('http://localhost:8765/bookmarks/add', {
+          await fetch('/bookmarks/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bmToken()}` },
             body: JSON.stringify({ name, url: bmPopupState.url, parentId }),
@@ -322,7 +322,7 @@
     bmPopupDelete.addEventListener('click', async () => {
       if (!bmPopupState.bookmarkId) return;
       try {
-        await fetch('http://localhost:8765/bookmarks/remove', {
+        await fetch('/bookmarks/remove', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bmToken()}` },
           body: JSON.stringify({ id: bmPopupState.bookmarkId }),
@@ -353,7 +353,7 @@
       } else {
         bookmarksBar.classList.remove('visible');
       }
-      fetch('http://localhost:8765/config', {
+      fetch('/config', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ general: { showBookmarksBar: bookmarksBarVisible } }),
@@ -578,7 +578,7 @@
       let retries = 3;
       while (retries > 0) {
         try {
-          const resp = await fetch('http://localhost:8765/bookmarks', {
+          const resp = await fetch('/bookmarks', {
             headers: { Authorization: `Bearer ${bmToken()}` }
           });
           if (!resp.ok) {
@@ -603,7 +603,7 @@
 
     setTimeout(async () => {
       try {
-        const res = await fetch('http://localhost:8765/config');
+        const res = await fetch('/config');
         if (res.ok) {
           const cfg = await res.json();
           if (cfg.general && cfg.general.showBookmarksBar === false) {

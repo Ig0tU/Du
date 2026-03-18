@@ -156,6 +156,54 @@ export async function humanizedClickAt(wc: WebContents, x: number, y: number): P
 }
 
 /**
+ * Perform a humanized drag-and-drop.
+ */
+export async function humanizedDrag(wc: WebContents, fromX: number, fromY: number, toX: number, toY: number): Promise<{ ok: boolean }> {
+  // 1. Move to start
+  await humanizedHoverAt(wc, fromX, fromY);
+  await humanDelay(100, 250);
+
+  // 2. Mouse down
+  wc.sendInputEvent({ type: 'mouseDown', x: fromX, y: fromY, button: 'left', clickCount: 1 });
+  await humanDelay(150, 300);
+
+  // 3. Move to end with trajectory
+  const trajectory = behaviorReplay.getMouseTrajectory(fromX, fromY, toX, toY);
+  for (const point of trajectory) {
+    wc.sendInputEvent({ type: 'mouseMove', x: point.x, y: point.y, modifiers: ['leftButtonDown'] as any });
+    if (point.delayMs > 0) await new Promise(r => setTimeout(r, point.delayMs));
+  }
+
+  await humanDelay(200, 400);
+
+  // 4. Mouse up
+  wc.sendInputEvent({ type: 'mouseUp', x: toX, y: toY, button: 'left', clickCount: 1 });
+
+  return { ok: true };
+}
+
+/**
+ * Perform a humanized smooth scroll.
+ */
+export async function humanizedScroll(wc: WebContents, deltaY: number): Promise<{ ok: boolean }> {
+  const steps = 10;
+  const stepDelta = deltaY / steps;
+
+  for (let i = 0; i < steps; i++) {
+    wc.sendInputEvent({
+      type: 'mouseWheel',
+      x: 500, y: 500, // Centerish
+      deltaX: 0,
+      deltaY: Math.round(stepDelta),
+      canScroll: true
+    });
+    await new Promise(r => setTimeout(r, 50 + Math.random() * 50));
+  }
+
+  return { ok: true };
+}
+
+/**
  * Hover coordinates using sendInputEvent mouseMove.
  */
 export async function humanizedHoverAt(wc: WebContents, x: number, y: number): Promise<{ ok: boolean }> {

@@ -239,13 +239,151 @@ export function registerAgentRoutes(router: Router, ctx: RouteContext): void {
   // AUTONOMOUS PLANNING (The "Century" Upgrade)
   // ═══════════════════════════════════════════════
 
+  router.get('/agents/visual-map', async (req: Request, res: Response) => {
+    try {
+      const wc = await getActiveWC(ctx);
+      if (!wc) return res.status(400).json({ error: 'No active tab' });
+
+      // Extract a comprehensive visual map of interactable elements
+      const visualMap = await wc.executeJavaScript(`
+        (() => {
+          const elements = [];
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+          let node;
+          let idCounter = 0;
+
+          // Helper to check if element is visible and in viewport
+          const isVisible = (el) => {
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+            const rect = el.getBoundingClientRect();
+            return rect.width > 2 && rect.height > 2 &&
+                   rect.top < window.innerHeight && rect.left < window.innerWidth &&
+                   rect.bottom > 0 && rect.right > 0;
+          };
+
+          while (node = walker.nextNode()) {
+            if (!isVisible(node)) continue;
+
+            const role = node.getAttribute('role') || node.tagName.toLowerCase();
+            const style = window.getComputedStyle(node);
+            const isClickable = style.cursor === 'pointer' ||
+                               ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(node.tagName) ||
+                               node.hasAttribute('onclick') ||
+                               role === 'button' || role === 'link' ||
+                               node.getAttribute('contenteditable') === 'true';
+
+            if (isClickable) {
+              const rect = node.getBoundingClientRect();
+              elements.push({
+                id: idCounter++,
+                tagName: node.tagName,
+                role: role === 'a' ? 'link' : role,
+                text: node.innerText?.trim().substring(0, 64) ||
+                      node.getAttribute('aria-label') ||
+                      node.getAttribute('title') ||
+                      node.placeholder || '',
+                center: {
+                  x: Math.round(rect.left + rect.width / 2),
+                  y: Math.round(rect.top + rect.height / 2)
+                },
+                rect: {
+                  x: Math.round(rect.left),
+                  y: Math.round(rect.top),
+                  w: Math.round(rect.width),
+                  h: Math.round(rect.height)
+                }
+              });
+            }
+          }
+          // Filter out overlapping elements, preferring children (more specific)
+          return elements.slice(0, 100);
+        })()
+      `);
+
+      res.json({ elements: visualMap, viewport: await wc.executeJavaScript('({ w: window.innerWidth, h: window.innerHeight })') });
+    } catch (e) {
+      handleRouteError(res, e);
+    }
+  });
+
+  router.get('/agents/observe', async (req: Request, res: Response) => {
+    try {
+      const wc = await getActiveWC(ctx);
+      if (!wc) return res.status(400).json({ error: 'No active tab' });
+
+      // Run a script to get semantic elements
+      const observation = await wc.executeJavaScript(`
+        (() => {
+          const elements = [];
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+          let node;
+          while (node = walker.nextNode()) {
+            const role = node.getAttribute('role') || node.tagName.toLowerCase();
+            const text = node.innerText?.trim();
+            const rect = node.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0 && (role === 'button' || role === 'link' || role === 'a' || node.tagName === 'BUTTON' || node.tagName === 'INPUT')) {
+              elements.push({
+                role: role === 'a' ? 'link' : role,
+                text: text?.substring(0, 50) || node.getAttribute('aria-label') || node.placeholder || '',
+                selector: node.id ? '#' + node.id : node.tagName.toLowerCase(),
+                rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+              });
+            }
+          }
+          return {
+            url: window.location.href,
+            title: document.title,
+            text: document.body.innerText.substring(0, 5000),
+            elements: elements.slice(0, 50)
+          };
+        })()
+      `);
+
+      res.json(observation);
+    } catch (e) {
+      handleRouteError(res, e);
+    }
+  });
+
+  router.post('/agents/reason', async (req: Request, res: Response) => {
+    try {
+      const { goal, observation } = req.body;
+      if (!goal) return res.status(400).json({ error: 'goal required' });
+
+      let obs = observation;
+      if (!obs) {
+        // Auto-observe if not provided
+        const wc = await getActiveWC(ctx);
+        if (wc) {
+          obs = await wc.executeJavaScript(`
+            (() => {
+               return {
+                url: window.location.href,
+                title: document.title,
+                text: document.body.innerText.substring(0, 5000),
+                elements: [] // Simplified for reason
+              };
+            })()
+          `);
+        }
+      }
+
+      const planner = ctx.heuristicPlanner;
+      const result = await planner.reason({ description: goal }, obs);
+      res.json(result);
+    } catch (e) {
+      handleRouteError(res, e);
+    }
+  });
+
   router.post('/agents/plan', async (req: Request, res: Response) => {
     try {
-      const { goal, url } = req.body;
+      const { goal, url, observation } = req.body;
       if (!goal) return res.status(400).json({ error: 'goal required' });
 
       const planner = ctx.heuristicPlanner;
-      const plan = await planner.plan({ description: goal, url });
+      const plan = await planner.plan({ description: goal, url }, observation);
 
       res.json(plan);
     } catch (e) {

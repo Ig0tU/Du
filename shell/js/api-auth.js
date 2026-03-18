@@ -47,6 +47,9 @@
     return tokenPromise;
   }
 
+  const isElectron = window.location.protocol === 'file:' || window.location.origin === 'null';
+  window.TANDEM_API_BASE = isElectron ? 'http://localhost:8765' : '';
+
   function isLocalTandemApiUrl(input) {
     const rawUrl = typeof input === 'string'
       ? input
@@ -58,9 +61,16 @@
       return false;
     }
 
+    // Relative URLs are always local
+    if (rawUrl.startsWith('/') && !rawUrl.startsWith('//')) {
+      return true;
+    }
+
     try {
       const url = new URL(rawUrl, window.location.href);
-      return (url.hostname === 'localhost' || url.hostname === '127.0.0.1') && url.port === '8765';
+      const isElectronLocal = (url.hostname === 'localhost' || url.hostname === '127.0.0.1') && url.port === '8765';
+      const isVercelLocal = url.origin === window.location.origin && !isElectron;
+      return isElectronLocal || isVercelLocal;
     } catch {
       return false;
     }
@@ -68,7 +78,20 @@
 
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
-    if (!isLocalTandemApiUrl(input)) {
+    let target = input;
+
+    if (isLocalTandemApiUrl(input)) {
+      const rawUrl = typeof input === 'string' ? input : input.url;
+      if (isElectron && rawUrl.startsWith('/')) {
+        // Redirect relative calls to localhost in Electron
+        const newUrl = window.TANDEM_API_BASE + rawUrl;
+        if (input instanceof Request) {
+          target = new Request(newUrl, input);
+        } else {
+          target = newUrl;
+        }
+      }
+    } else {
       return originalFetch(input, init);
     }
 
@@ -80,10 +103,10 @@
       headers.set('Authorization', `Bearer ${token}`);
     }
 
-    if (input instanceof Request) {
-      return originalFetch(new Request(input, { ...init, headers }));
+    if (target instanceof Request) {
+      return originalFetch(new Request(target, { ...init, headers }));
     }
 
-    return originalFetch(input, { ...init, headers });
+    return originalFetch(target, { ...init, headers });
   };
 })();
