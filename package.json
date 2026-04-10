@@ -38,7 +38,8 @@
     "test:watch": "vitest",
     "test:security": "vitest run src/security/tests/",
     "test:extensions": "vitest run src/extensions/tests/",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "vercel-build": "npm run compile"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

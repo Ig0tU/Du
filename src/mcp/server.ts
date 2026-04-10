@@ -123,6 +123,28 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════════
+// tandem_get_visual_map — Get interactive visual map
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_get_visual_map',
+  'Get a visual map of all interactable elements on the page, including their coordinates, roles, and text.',
+  async () => {
+    const map = await apiCall('GET', '/agents/visual-map');
+
+    let text = `Visual Map (${map.elements.length} elements):\n\n`;
+    text += `Viewport: ${map.viewport.w}x${map.viewport.h}\n\n`;
+
+    map.elements.forEach((e: any) => {
+      text += `- [${e.role}] "${e.text}" at (${e.center.x}, ${e.center.y}) | Rect: ${e.rect.x},${e.rect.y},${e.rect.w},${e.rect.h}\n`;
+    });
+
+    await logActivity('visual_map', `${map.elements.length} elements`);
+    return { content: [{ type: 'text', text }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
 // tandem_get_links — Get all links on the current page
 // ═══════════════════════════════════════════════
 
@@ -946,20 +968,23 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════════
-// tandem_observe — Observe page mutations and network
+// tandem_observe — Observe page mutations, network, and semantic state
 // ═══════════════════════════════════════════════
 
 server.tool(
   'tandem_observe',
-  'Observe recent browser activity, including DOM mutations and network requests, for autonomous reasoning.',
+  'Observe recent browser activity (logs/network) and the current semantic page state (elements/text) for autonomous reasoning.',
   async () => {
-    const [activity, network, console] = await Promise.all([
+    const [activity, network, console, semantic] = await Promise.all([
       apiCall('GET', '/activity-log?limit=20'),
       apiCall('GET', '/devtools/network?limit=20'),
       apiCall('GET', '/devtools/console?limit=10&level=error'),
+      apiCall('GET', '/agents/observe').catch(() => ({ elements: [], text: '', title: '', url: '' })),
     ]);
 
     let text = '=== Recent Observations ===\n\n';
+
+    text += `Current Page: ${semantic.title} (${semantic.url})\n\n`;
 
     text += 'Activity Log:\n';
     activity.entries.forEach((e: Record<string, any>) => {
@@ -978,7 +1003,35 @@ server.tool(
       });
     }
 
+    if (semantic.elements && semantic.elements.length > 0) {
+      text += '\nSemantic Elements:\n';
+      semantic.elements.forEach((e: any) => {
+        text += `- [${e.role}] "${e.text}" (Selector: ${e.selector})\n`;
+      });
+    }
+
     return { content: [{ type: 'text', text }] };
+  }
+);
+
+// ═══════════════════════════════════════════════
+// tandem_reason — Get AI reasoning for next step
+// ═══════════════════════════════════════════════
+
+server.tool(
+  'tandem_reason',
+  'Ask the Tandem Heuristic Engine for a recommended next step based on a goal and the current page state.',
+  {
+    goal: z.string().describe('The goal you are trying to achieve'),
+  },
+  async ({ goal }) => {
+    const result = await apiCall('POST', '/agents/reason', { goal });
+    return {
+      content: [{
+        type: 'text',
+        text: `Thought: ${result.thought}\nRecommendation: ${result.recommendation ? JSON.stringify(result.recommendation, null, 2) : 'None'}`
+      }]
+    };
   }
 );
 

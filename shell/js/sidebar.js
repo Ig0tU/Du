@@ -13,6 +13,7 @@
       bookmarks:  { svg: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>`, brand: null },
       history:    { svg: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`, brand: null },
       downloads:  { svg: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>`, brand: null },
+      automation: { svg: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12l.041-.02a.75.75 0 0 0-.714-.714A18.06 18.06 0 0 0 15.59 14.37ZM9.75 17.25v4.25a.75.75 0 0 1-.41.67l-2.58 1.29a.75.75 0 0 1-1.09-.58l-.42-2.93m4.5-2.66a14.98 14.98 0 0 1-6.16-12.12L3.66 5.09a.75.75 0 0 0-.714.714 18.06 18.06 0 0 0 6.804 11.826ZM6.25 18.94l-2.58 1.29a.75.75 0 0 1-1.08-.58l-.42-2.93M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>`, brand: null },
 
       // === COMMUNICATION ITEMS (colored brand icons, custom background) ===
       calendar:  { svg: `<svg viewBox="0 0 24 24" fill="white"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>`, brand: '#4285F4' },
@@ -28,6 +29,7 @@
     let config = null;
     let isSetupPanelOpen = false;
     const TOKEN = window.__TANDEM_TOKEN__ || '';
+    const API_BASE = window.TANDEM_API_BASE || '';
 
     // === WORKSPACE STATE ===
     let wsWorkspaces = [];
@@ -65,7 +67,7 @@
     }
 
     async function loadQuickLinksConfig() {
-      const response = await fetch('http://localhost:8765/config', {
+      const response = await fetch(`${API_BASE}/config`, {
         headers: { Authorization: `Bearer ${TOKEN}` }
       });
       if (!response.ok) throw new Error('Failed to load quick links');
@@ -93,7 +95,8 @@
         }
       });
       quickLinks.push({ label, url: normalizedUrl });
-      const response = await fetch('http://localhost:8765/config', {
+      const response = await fetch(`${API_BASE}/config`, {
+      const response = await fetch(`${API_BASE}/config`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -128,7 +131,7 @@
     }
 
     async function loadConfig() {
-      const r = await fetch('http://localhost:8765/sidebar/config', { headers: { Authorization: `Bearer ${TOKEN}` } });
+      const r = await fetch(`${API_BASE}/sidebar/config`, { headers: { Authorization: `Bearer ${TOKEN}` } });
       const data = await r.json();
       config = data.config;
       config.activeItemId = null; // always start with panel closed
@@ -326,7 +329,7 @@
     }
 
     async function activateItem(id) {
-      await fetch(`http://localhost:8765/sidebar/items/${id}/activate`, {
+      await fetch(`${API_BASE}/sidebar/items/${id}/activate`, {
         method: 'POST', headers: { Authorization: `Bearer ${TOKEN}` }
       });
       isSetupPanelOpen = false;
@@ -342,6 +345,8 @@
         loadHistoryPanel();
       } else if (newActive === 'pinboards') {
         loadPinboardPanel();
+      } else if (newActive === 'automation') {
+        loadAutomationPanel();
       } else {
         hideWebviews();
         const content = document.getElementById('sidebar-panel-content');
@@ -351,7 +356,7 @@
 
     async function toggleState() {
       const newState = config.state === 'wide' ? 'narrow' : 'wide';
-      await fetch('http://localhost:8765/sidebar/state', {
+      await fetch(`${API_BASE}/sidebar/state`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: newState })
@@ -362,7 +367,7 @@
 
     async function toggleVisibility() {
       const newState = config.state === 'hidden' ? 'narrow' : 'hidden';
-      await fetch('http://localhost:8765/sidebar/state', {
+      await fetch(`${API_BASE}/sidebar/state`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: newState })
@@ -507,7 +512,7 @@
 
     async function reloadBmData() {
       try {
-        const res = await fetch('http://localhost:8765/bookmarks', { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const res = await fetch(`${API_BASE}/bookmarks`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const data = await res.json();
         bmState.all = data.bookmarks?.[0] || { children: [] };
         // Re-navigate to current folder if possible
@@ -555,7 +560,7 @@
         try {
           const body = { id, name: newName };
           if (!isFolder && newUrl) body.url = newUrl;
-          await fetch('http://localhost:8765/bookmarks/update', {
+          await fetch(`${API_BASE}/bookmarks/update`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
             body: JSON.stringify(body),
@@ -605,7 +610,7 @@
 
       // Fetch bookmarks if not cached
       if (!bmState.all) {
-        const res = await fetch('http://localhost:8765/bookmarks', { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const res = await fetch(`${API_BASE}/bookmarks`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const data = await res.json();
         bmState.all = data.bookmarks?.[0] || { children: [] }; // Bookmarks Bar root
       }
@@ -646,7 +651,7 @@
         }
         searchTimer = setTimeout(async () => {
           bmState.searchMode = true;
-          const res = await fetch(`http://localhost:8765/bookmarks/search?q=${encodeURIComponent(q)}`, {
+          const res = await fetch(`${API_BASE}/bookmarks/search?q=${encodeURIComponent(q)}`, {
             headers: { Authorization: `Bearer ${TOKEN}` }
           });
           const data = await res.json();
@@ -689,7 +694,7 @@
           if (!name || !url) return;
           const parentId = bmState.currentFolder?.id || bmState.all?.id || '';
           try {
-            await fetch('http://localhost:8765/bookmarks/add', {
+            await fetch(`${API_BASE}/bookmarks/add`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
               body: JSON.stringify({ name, url, parentId }),
@@ -727,7 +732,7 @@
           if (!name) return;
           const parentId = bmState.currentFolder?.id || bmState.all?.id || '';
           try {
-            await fetch('http://localhost:8765/bookmarks/add-folder', {
+            await fetch(`${API_BASE}/bookmarks/add-folder`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
               body: JSON.stringify({ name, parentId }),
@@ -767,7 +772,7 @@
 
       // Fetch history
       try {
-        const res = await fetch('http://localhost:8765/history', { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const res = await fetch(`${API_BASE}/history`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const data = await res.json();
         const entries = data.entries || [];
         const listEl = document.getElementById('history-list');
@@ -786,14 +791,14 @@
         clearTimeout(historySearchTimer);
         const q = e.target.value.trim();
         if (!q) {
-          const res = await fetch('http://localhost:8765/history', { headers: { Authorization: `Bearer ${TOKEN}` } });
+          const res = await fetch(`${API_BASE}/history`, { headers: { Authorization: `Bearer ${TOKEN}` } });
           const data = await res.json();
           const listEl = document.getElementById('history-list');
           if (listEl) { listEl.innerHTML = renderHistoryItems(data.entries || []); attachHistoryClickHandlers(listEl); }
           return;
         }
         historySearchTimer = setTimeout(async () => {
-          const res = await fetch(`http://localhost:8765/history/search?q=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+          const res = await fetch(`${API_BASE}/history/search?q=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
           const data = await res.json();
           const listEl = document.getElementById('history-list');
           if (listEl) { listEl.innerHTML = renderHistoryItems(data.results || []); attachHistoryClickHandlers(listEl); }
@@ -832,7 +837,7 @@
       if (!section || !list) return;
 
       try {
-        const res = await fetch('http://localhost:8765/sync/devices', { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const res = await fetch(`${API_BASE}/sync/devices`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const data = await res.json();
         const devices = data.devices || [];
         if (!devices.length) { section.style.display = 'none'; return; }
@@ -891,7 +896,7 @@
         </div>`);
 
       try {
-        const res = await fetch('http://localhost:8765/pinboards', { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const res = await fetch(`${API_BASE}/pinboards`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const data = await res.json();
         pbRenderBoardList(data.boards || []);
       } catch {
@@ -927,7 +932,7 @@
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const boardId = btn.dataset.boardId;
-          await fetch(`http://localhost:8765/pinboards/${boardId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${TOKEN}` } });
+          await fetch(`${API_BASE}/pinboards/${boardId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${TOKEN}` } });
           loadPinboardPanel();
         });
       });
@@ -963,7 +968,7 @@
 
       // Fetch board data to apply saved layout/background
       try {
-        const boardRes = await fetch(`http://localhost:8765/pinboards/${boardId}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const boardRes = await fetch(`${API_BASE}/pinboards/${boardId}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const boardData = await boardRes.json();
         if (boardData.ok && boardData.board) {
           pbState.currentLayout = boardData.board.layout || 'default';
@@ -1023,7 +1028,7 @@
             pbApplyGridClasses();
             panel.querySelectorAll('[data-layout]').forEach(o => o.classList.remove('active'));
             opt.classList.add('active');
-            await fetch(`http://localhost:8765/pinboards/${boardId}/settings`, {
+            await fetch(`${API_BASE}/pinboards/${boardId}/settings`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
               body: JSON.stringify({ layout })
@@ -1037,7 +1042,7 @@
             pbApplyGridClasses();
             panel.querySelectorAll('[data-bg]').forEach(o => o.classList.remove('active'));
             opt.classList.add('active');
-            await fetch(`http://localhost:8765/pinboards/${boardId}/settings`, {
+            await fetch(`${API_BASE}/pinboards/${boardId}/settings`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
               body: JSON.stringify({ background: bg })
@@ -1059,7 +1064,7 @@
         const textarea = document.getElementById('pb-note-textarea');
         const text = textarea.value.trim();
         if (!text) return;
-        await fetch(`http://localhost:8765/pinboards/${boardId}/items`, {
+        await fetch(`${API_BASE}/pinboards/${boardId}/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
           body: JSON.stringify({ type: 'text', content: text })
@@ -1083,7 +1088,7 @@
       });
 
       try {
-        const res = await fetch(`http://localhost:8765/pinboards/${boardId}/items`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const res = await fetch(`${API_BASE}/pinboards/${boardId}/items`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const data = await res.json();
         pbRenderItems(data.items || []);
       } catch {
@@ -1136,7 +1141,7 @@
       overlay.querySelector('.pb-edit-save-btn').addEventListener('click', async () => {
         const title = overlay.querySelector('.pb-edit-title-input').value.trim();
         const content = overlay.querySelector('.pb-edit-content-input').value.trim();
-        await fetch(`http://localhost:8765/pinboards/${boardId}/items/${item.id}`, {
+        await fetch(`${API_BASE}/pinboards/${boardId}/items/${item.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
           body: JSON.stringify({ title, content, note: content })
@@ -1149,7 +1154,7 @@
     async function pbRefreshItems(boardId) {
       if (!boardId || !document.getElementById('pb-item-list')) return;
       try {
-        const res = await fetch(`http://localhost:8765/pinboards/${boardId}/items`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const res = await fetch(`${API_BASE}/pinboards/${boardId}/items`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const data = await res.json();
         pbRenderItems(data.items || []);
         await pbUpdateBoardSwitcher(boardId);
@@ -1158,7 +1163,7 @@
 
     async function pbUpdateBoardSwitcher(currentId) {
       try {
-        const res = await fetch('http://localhost:8765/pinboards', { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const res = await fetch(`${API_BASE}/pinboards`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const data = await res.json();
         const select = document.getElementById('pb-board-switcher');
         if (!select) return;
@@ -1254,7 +1259,7 @@
           card.style.opacity = '0';
           card.style.transform = 'scale(0.9)';
         }
-        await fetch(`http://localhost:8765/pinboards/${pbState.currentBoardId}/items/${itemId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${TOKEN}` } });
+        await fetch(`${API_BASE}/pinboards/${pbState.currentBoardId}/items/${itemId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${TOKEN}` } });
         setTimeout(() => {
           if (card) card.remove();
           if (container.querySelectorAll('.pb-card').length === 0) {
@@ -1306,7 +1311,7 @@
                 body.contentEditable = 'false';
                 const newText = body.textContent.trim();
                 if (newText && newText !== originalText) {
-                  await fetch(`http://localhost:8765/pinboards/${pbState.currentBoardId}/items/${itemId}`, {
+                  await fetch(`${API_BASE}/pinboards/${pbState.currentBoardId}/items/${itemId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
                     body: JSON.stringify({ content: newText })
@@ -1339,7 +1344,7 @@
                 titleEl.style.whiteSpace = '';
                 const newText = titleEl.textContent.trim();
                 if (newText && newText !== originalText) {
-                  await fetch(`http://localhost:8765/pinboards/${pbState.currentBoardId}/items/${itemId}`, {
+                  await fetch(`${API_BASE}/pinboards/${pbState.currentBoardId}/items/${itemId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
                     body: JSON.stringify({ title: newText })
@@ -1390,7 +1395,7 @@
         const targetIdx = cards.indexOf(target);
         if (draggedIdx < targetIdx) { target.after(draggedCard); } else { target.before(draggedCard); }
         const newOrder = [...container.querySelectorAll('.pb-card')].map(c => c.dataset.itemId);
-        await fetch(`http://localhost:8765/pinboards/${pbState.currentBoardId}/items/reorder`, {
+        await fetch(`${API_BASE}/pinboards/${pbState.currentBoardId}/items/reorder`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
           body: JSON.stringify({ itemIds: newOrder })
@@ -1399,11 +1404,132 @@
       });
     }
 
+    // === AUTOMATION PANEL MODULE (Dev Suite) ===
+    async function loadAutomationPanel() {
+      const content = document.getElementById('sidebar-panel-content');
+      hideWebviews();
+      content.classList.remove('webview-mode');
+
+      safeSetPanelHTML(`
+        <div class="automation-panel">
+          <div class="auto-goal-input">
+            <textarea id="auto-goal-text" placeholder="Enter an autonomous goal (e.g. 'Search for latest AI news and extract the top headline')"></textarea>
+            <button id="auto-run-btn" class="auto-primary-btn">Execute Goal autonomously</button>
+          </div>
+
+          <div class="auto-stats">
+            <div class="auto-stat-card">
+              <span class="auto-stat-label">Tasks</span>
+              <span id="auto-task-count" class="auto-stat-value">0</span>
+            </div>
+            <div class="auto-stat-card">
+              <span class="auto-stat-label">Integrity</span>
+              <span id="auto-integrity" class="auto-stat-value">100%</span>
+            </div>
+          </div>
+
+          <div class="auto-section">
+            <div class="auto-section-header">Live Tasks</div>
+            <div id="auto-task-list" class="auto-list">
+              <div class="auto-empty">No active tasks</div>
+            </div>
+          </div>
+
+          <div class="auto-section">
+            <div class="auto-section-header">Heuristic Observations</div>
+            <div id="auto-observe-log" class="auto-list">
+              <div class="auto-empty">Waiting for activity...</div>
+            </div>
+          </div>
+        </div>`);
+
+      // Refresh data
+      refreshAutomationData();
+
+      document.getElementById('auto-run-btn')?.addEventListener('click', async () => {
+        const goal = document.getElementById('auto-goal-text').value.trim();
+        if (!goal) return;
+
+        const btn = document.getElementById('auto-run-btn');
+        btn.disabled = true;
+        btn.textContent = 'Planning...';
+
+        try {
+          const res = await fetch(`${API_BASE}/agents/execute-goal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+            body: JSON.stringify({ goal })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            document.getElementById('auto-goal-text').value = '';
+            refreshAutomationData();
+          }
+        } catch (e) {
+          console.error('Goal execution failed:', e);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Execute Goal autonomously';
+        }
+      });
+    }
+
+    async function refreshAutomationData() {
+      if (!config.activeItemId === 'automation') return;
+
+      try {
+        const [tasksRes, activityRes] = await Promise.all([
+          fetch(`${API_BASE}/tasks`, { headers: { Authorization: `Bearer ${TOKEN}` } }),
+          fetch(`${API_BASE}/activity-log?limit=5`, { headers: { Authorization: `Bearer ${TOKEN}` } })
+        ]);
+
+        const tasks = await tasksRes.json();
+        const activity = await activityRes.json();
+
+        // Render tasks
+        const taskList = document.getElementById('auto-task-list');
+        if (taskList) {
+          if (tasks.length === 0) {
+            taskList.innerHTML = '<div class="auto-empty">No active tasks</div>';
+          } else {
+            taskList.innerHTML = tasks.map(t => `
+              <div class="auto-item">
+                <div class="auto-item-title">${pbEscape(t.description)}</div>
+                <div class="auto-item-meta">Status: ${t.status} • Steps: ${t.steps.length}</div>
+              </div>
+            `).join('');
+          }
+          document.getElementById('auto-task-count').textContent = tasks.length;
+        }
+
+        // Render observations
+        const observeLog = document.getElementById('auto-observe-log');
+        if (observeLog) {
+          if (!activity.entries || activity.entries.length === 0) {
+            observeLog.innerHTML = '<div class="auto-empty">Waiting for activity...</div>';
+          } else {
+            observeLog.innerHTML = activity.entries.map(e => `
+              <div class="auto-observe-item">
+                <span class="auto-observe-type">${e.type}</span>
+                <span class="auto-observe-desc">${pbEscape(JSON.stringify(e.data).substring(0, 50))}...</span>
+              </div>
+            `).join('');
+          }
+        }
+
+      } catch (e) { /* silent */ }
+
+      // Polling
+      if (config.activeItemId === 'automation') {
+        setTimeout(refreshAutomationData, 3000);
+      }
+    }
+
     async function pbCreateBoard() {
       const name = await showPrompt('New board', 'Board name…');
       if (!name) return;
       const emoji = await showPrompt('Board emoji (optional)', 'e.g. 📌', '📌') || '📌';
-      await fetch('http://localhost:8765/pinboards', {
+      await fetch(`${API_BASE}/pinboards`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
         body: JSON.stringify({ name, emoji })
@@ -1458,11 +1584,11 @@
       content.querySelectorAll('input[data-item-id]').forEach(input => {
         input.addEventListener('change', async (e) => {
           const id = e.target.dataset.itemId;
-          await fetch(`http://localhost:8765/sidebar/items/${id}/toggle`, {
+          await fetch(`${API_BASE}/sidebar/items/${id}/toggle`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${TOKEN}` }
           });
-          const r = await fetch('http://localhost:8765/sidebar/config', {
+          const r = await fetch(`${API_BASE}/sidebar/config`, {
             headers: { Authorization: `Bearer ${TOKEN}` }
           });
           const data = await r.json();
@@ -1502,7 +1628,7 @@
     async function savePanelWidth(id, width) {
       if (!config.panelWidths) config.panelWidths = {};
       config.panelWidths[id] = width;
-      await fetch('http://localhost:8765/sidebar/config', {
+      await fetch(`${API_BASE}/sidebar/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
         body: JSON.stringify({ panelWidths: config.panelWidths })
@@ -1556,7 +1682,7 @@
     // === WORKSPACE FUNCTIONS ===
     async function loadWorkspaces() {
       try {
-        const r = await fetch('http://localhost:8765/workspaces', { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const r = await fetch(`${API_BASE}/workspaces`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const data = await r.json();
         if (data.ok) {
           wsWorkspaces = data.workspaces;
@@ -1569,7 +1695,7 @@
 
     async function switchWorkspace(id) {
       try {
-        const r = await fetch(`http://localhost:8765/workspaces/${id}/switch`, {
+        const r = await fetch(`${API_BASE}/workspaces/${id}/switch`, {
           method: 'POST', headers: { Authorization: `Bearer ${TOKEN}` }
         });
         const data = await r.json();
@@ -1656,7 +1782,7 @@
         if (!name) return;
         try {
           if (isEdit) {
-            const r = await fetch(`http://localhost:8765/workspaces/${existingWs.id}`, {
+            const r = await fetch(`${API_BASE}/workspaces/${existingWs.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
               body: JSON.stringify({ name, icon: selectedIcon })
@@ -1668,7 +1794,7 @@
               render();
             }
           } else {
-            const r = await fetch('http://localhost:8765/workspaces', {
+            const r = await fetch(`${API_BASE}/workspaces`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
               body: JSON.stringify({ name, icon: selectedIcon })
@@ -1701,7 +1827,7 @@
         });
         content.querySelector('#ws-form-delete-yes').addEventListener('click', async () => {
           try {
-            await fetch(`http://localhost:8765/workspaces/${existingWs.id}`, {
+            await fetch(`${API_BASE}/workspaces/${existingWs.id}`, {
               method: 'DELETE', headers: { Authorization: `Bearer ${TOKEN}` }
             });
             await loadWorkspaces();
@@ -1824,7 +1950,7 @@
       document.getElementById('sidebar-panel-pin').addEventListener('click', async () => {
         config.panelPinned = !config.panelPinned;
         applyPinState(config.panelPinned);
-        await fetch('http://localhost:8765/sidebar/config', {
+        await fetch(`${API_BASE}/sidebar/config`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
           body: JSON.stringify({ panelPinned: config.panelPinned })
@@ -1925,7 +2051,7 @@
       const wcId = getWebContentsIdForTab(domTabId);
       if (wcId === null) return;
       try {
-        await fetch(`http://localhost:8765/workspaces/${targetWsId}/move-tab`, {
+        await fetch(`${API_BASE}/workspaces/${targetWsId}/move-tab`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
           body: JSON.stringify({ tabId: wcId })
@@ -1952,7 +2078,7 @@
       // Pre-fetch pinboards (fast — same-machine API call)
       let pbBoards = [];
       try {
-        const pbRes = await fetch('http://localhost:8765/pinboards', { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const pbRes = await fetch(`${API_BASE}/pinboards`, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const pbData = await pbRes.json();
         pbBoards = pbData.boards || [];
       } catch { /* Tandem not running or no boards */ }
@@ -2073,7 +2199,7 @@
               closeCtxMenu();
               const tabUrl = wv ? wv.src : '';
               const tabTitle = wv ? wv.getTitle() : '';
-              await fetch('http://localhost:8765/pinboards/' + board.id + '/items', {
+              await fetch(`${API_BASE}/pinboards/` + board.id + '/items', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
                 body: JSON.stringify({ type: 'link', url: tabUrl, title: tabTitle })

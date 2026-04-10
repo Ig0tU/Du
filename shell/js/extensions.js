@@ -165,7 +165,7 @@
         const confirmed = confirm(`Remove "${data.name}" from Tandem?`);
         if (!confirmed) return;
         try {
-          const resp = await fetch(`http://localhost:8765/extensions/uninstall/${data.diskId || data.id}`, {
+          const resp = await fetch(`/extensions/uninstall/${data.diskId || data.id}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
           });

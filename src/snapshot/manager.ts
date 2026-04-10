@@ -1,5 +1,5 @@
 import type { DevToolsManager } from '../devtools/manager';
-import { humanizedClickAt, humanizedType } from '../input/humanized';
+import { humanizedClickAt, humanizedHoverAt, humanizedTypeIntoFocused } from '../input/humanized';
 import type { AccessibilityNode, RefMap, SnapshotOptions, SnapshotResult } from './types';
 
 /** Roles considered interactive (buttons, inputs, links, etc.) */
@@ -276,11 +276,34 @@ export class SnapshotManager {
     // Actually, humanizedType already handles focus if we give it a selector.
     // If we don't have a selector, we just type.
 
-    // Re-calculating: let's just use the character loop for now,
-    // it's already using behaviorReplay in fillRef (Wait, I removed it in SEARCH block).
-    // I will restore it using the shared logic.
+    // Type each character with humanized delays
+    await humanizedTypeIntoFocused(wc, value, true);
+  }
 
-    await humanizedType(wc, 'body', value, true); // body is a dummy, we are already focused and clear=true
+  /**
+   * Hover an element by @ref.
+   */
+  async hoverRef(ref: string): Promise<void> {
+    const backendNodeId = this.refBackendNodeMap.get(ref);
+    if (backendNodeId === undefined) {
+      throw new Error(`Ref not found: ${ref} — call GET /snapshot first`);
+    }
+
+    // Get the box model to find element coordinates
+    await this.devtools.sendCommand('DOM.enable', {});
+    const box = await this.devtools.sendCommand('DOM.getBoxModel', { backendNodeId });
+    if (!box.model?.content) {
+      throw new Error(`Cannot get box model for ${ref}`);
+    }
+
+    const c = box.model.content;
+    const x = Math.round((c[0] + c[2] + c[4] + c[6]) / 4);
+    const y = Math.round((c[1] + c[3] + c[5] + c[7]) / 4);
+
+    const wc = await this.devtools.ensureAttached();
+    if (!wc) throw new Error('No active tab');
+
+    await humanizedHoverAt(wc, x, y);
   }
 
   /**
@@ -342,6 +365,29 @@ export class SnapshotManager {
     const ref = `@e${this.refCounter}`;
     this.refBackendNodeMap.set(ref, backendNodeId);
     return ref;
+  }
+
+  /**
+   * Get the box model for an element by @ref.
+   * Returns the content quad center coordinates.
+   */
+  async getBoxModelForRef(ref: string): Promise<{ x: number; y: number }> {
+    const backendNodeId = this.refBackendNodeMap.get(ref);
+    if (backendNodeId === undefined) {
+      throw new Error(`Ref not found: ${ref}`);
+    }
+
+    await this.devtools.sendCommand('DOM.enable', {});
+    const box = await this.devtools.sendCommand('DOM.getBoxModel', { backendNodeId });
+    if (!box.model?.content) {
+      throw new Error(`Cannot get box model for ${ref}`);
+    }
+
+    const c = box.model.content;
+    return {
+      x: Math.round((c[0] + c[2] + c[4] + c[6]) / 4),
+      y: Math.round((c[1] + c[3] + c[5] + c[7]) / 4)
+    };
   }
 
   /**

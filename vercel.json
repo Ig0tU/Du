@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "name": "tandem-browser",
+  "builds": [
+    {
+      "src": "api/index.ts",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "shell/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/(index.html)?",
+      "destination": "/shell/index.html"
+    },
+    {
+      "source": "/js/(.*)",
+      "destination": "/shell/js/$1"
+    },
+    {
+      "source": "/css/(.*)",
+      "destination": "/shell/css/$1"
+    },
+    {
+      "source": "/img/(.*)",
+      "destination": "/shell/img/$1"
+    }
+  ]
+}

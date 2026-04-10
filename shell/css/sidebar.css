@@ -279,7 +279,7 @@
     }
     .sidebar-panel-resize:hover,
     .sidebar-panel-resize.dragging {
-      background: rgba(124, 92, 191, 0.5);
+      background: rgba(99, 102, 241, 0.5);
     }
     .sidebar-panel-content.webview-mode {
       padding: 0;
@@ -373,7 +373,7 @@
       border-radius: 50%;
       transition: transform 0.2s;
     }
-    .toggle-switch input:checked + .toggle-slider { background: #7c5cbf; }
+    .toggle-switch input:checked + .toggle-slider { background: #4f46e5; }
     .toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); }
 
     /* === WORKSPACE STRIP ICONS (Section 1 of sidebar) === */

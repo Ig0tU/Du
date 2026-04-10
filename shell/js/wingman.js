@@ -229,7 +229,7 @@
           const sourceEl = entry.tabEl.querySelector('.tab-source');
           if (sourceEl && sourceEl.textContent === '🤖') {
             // Claim the tab for Robin
-            fetch('http://localhost:8765/tabs/source', {
+            fetch('/tabs/source', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ tabId, source: 'robin' })
@@ -338,7 +338,7 @@
         if (image) {
           const msgText = el.querySelector('.msg-text');
           const img = document.createElement('img');
-          img.src = `http://localhost:8765/chat/image/${image}`;
+          img.src = `/chat/image/${image}`;
           img.className = 'chat-msg-image';
           img.addEventListener('click', () => window.open(img.src, '_blank'));
           img.onerror = () => { img.style.display = 'none'; };
@@ -478,7 +478,7 @@
         updateBackendUI(id);
 
         // Persist choice to config
-        fetch('http://localhost:8765/config', {
+        fetch('/config', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ general: { activeBackend: id } })
@@ -956,7 +956,7 @@
 
       // Load saved backend from config, fallback to openclaw
       router.connectAll();
-      fetch('http://localhost:8765/config')
+      fetch('/config')
         .then(r => r.json())
         .then(cfg => {
           const saved = cfg.general && cfg.general.activeBackend;
@@ -1006,7 +1006,7 @@
         if (window.tandem && window.tandem.emergencyStop) {
           window.tandem.emergencyStop();
         } else {
-          fetch('http://localhost:8765/emergency-stop', { method: 'POST' }).catch(() => { });
+          fetch('/emergency-stop', { method: 'POST' }).catch(() => { });
         }
       }
 
@@ -1020,7 +1020,7 @@
       if (liveToggleBtn) {
         liveToggleBtn.addEventListener('click', async () => {
           try {
-            const res = await fetch('http://localhost:8765/live/toggle', {
+            const res = await fetch('/live/toggle', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ enabled: !liveEnabled }),
@@ -1084,7 +1084,7 @@
         `;
 
         card.querySelector('.btn-approve').addEventListener('click', () => {
-          fetch(`http://localhost:8765/tasks/${data.taskId}/approve`, {
+          fetch(`/tasks/${data.taskId}/approve`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ stepId: data.stepId })
@@ -1094,7 +1094,7 @@
         });
 
         card.querySelector('.btn-reject').addEventListener('click', () => {
-          fetch(`http://localhost:8765/tasks/${data.taskId}/reject`, {
+          fetch(`/tasks/${data.taskId}/reject`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ stepId: data.stepId })
